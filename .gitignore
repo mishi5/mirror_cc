@@ -1,0 +1,39 @@
+# Node / Vite
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Test / Coverage
+coverage/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Git worktrees
+.worktrees/
+
+# Superpowers (local cache/runtime)
+.superpowers/
+
+# Claude local settings
+.claude/settings.local.json
+
+# User notes
+docs/user_memo/
