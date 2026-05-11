@@ -11,6 +11,12 @@
 - Vitest (テスト)
 - ESLint (Flat config) + Prettier
 
+## 動作環境
+
+- ブラウザ: Chrome 最新版を推奨 (MediaPipe Pose / WebGL の互換性が最も安定)
+- Web カメラ: `getUserMedia` でアクセスするため、ブラウザのカメラ権限を許可する必要がある
+- `npm run dev` は `http://localhost:5173` で配信されるため、開発時はカメラ API が localhost 例外で動作する
+
 ## セットアップ
 
 Node.js 20+ と npm が必要。
