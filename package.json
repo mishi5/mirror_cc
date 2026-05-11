@@ -4,6 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "description": "カメラによるボーン認識を利用したC.C.レモンゲーム風対戦ゲーム",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@11.6.2",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
