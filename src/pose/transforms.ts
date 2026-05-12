@@ -17,7 +17,7 @@ export function mirrorLandmarks(
   landmarks: ReadonlyArray<Readonly<NormalizedLandmark>>,
 ): NormalizedLandmark[] {
   return landmarks.map((lm) => ({
-    x: parseFloat((1 - lm.x).toPrecision(10)),
+    x: 1 - lm.x,
     y: lm.y,
     z: lm.z,
     visibility: lm.visibility,
