@@ -37,7 +37,7 @@ export const VISION_WASM_URL =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.16/wasm";
 
 /** getUserMedia の希望解像度。実機が下回る場合は自動で fallback。 */
-export const WEBCAM_CONSTRAINTS: MediaStreamConstraints = {
+export const WEBCAM_CONSTRAINTS = {
   video: {
     width: { ideal: 640 },
     height: { ideal: 480 },
@@ -45,4 +45,4 @@ export const WEBCAM_CONSTRAINTS: MediaStreamConstraints = {
     facingMode: "user",
   },
   audio: false,
-};
+} as const satisfies MediaStreamConstraints;
