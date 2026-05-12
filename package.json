@@ -19,6 +19,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.16",
     "three": "^0.160.0"
   },
   "devDependencies": {
