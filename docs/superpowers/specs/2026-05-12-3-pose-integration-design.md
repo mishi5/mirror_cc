@@ -101,8 +101,8 @@ class App {
 ```
 
 - 描画ループは `requestAnimationFrame` ベース
-- 毎フレーム: `video.currentTime` ベースのタイムスタンプで `landmarker.detectForVideo(video, ts)` を呼ぶ
-- 結果を `transforms.mirrorLandmarks()` → `overlay.draw()` に渡す
+- 毎フレーム: `performance.now()` ベースのタイムスタンプで `landmarker.detectForVideo(video, ts)` を呼ぶ
+- 結果の raw landmarks を `overlay.draw()` に渡す (video と overlay canvas は CSS で `scaleX(-1)` されているため、JS 側でミラー反転すると二重反転になる。`mirrorLandmarks` は Phase 2 以降のゲーム座標系変換用ユーティリティとして提供)
 - `hud.update(fps, detectTime)`
 - 例外は `handleError()` で UI 反映、ループ停止
 
