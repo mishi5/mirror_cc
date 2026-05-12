@@ -18,6 +18,17 @@
         width: 100vw;
         height: 100vh;
       }
+      /*
+       * renderer.setSize(w, h, false) で drawing buffer は w*h*pixelRatio になるが
+       * canvas の CSS サイズは未設定のままなので、Retina (pixelRatio=2) では canvas が
+       * viewport の 2倍に表示されてしまう。CLAUDE.md のルール (第3引数 false) を維持
+       * しながら正しい表示にするため、canvas の CSS サイズを明示する。
+       */
+      #app canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
     </style>
   </head>
   <body>
