@@ -27,12 +27,12 @@ function makeLandmarkArray(count: number): NormalizedLandmark[] {
 describe("mirrorLandmarks", () => {
   it("各ランドマークの x を 1 - x に変換する", () => {
     const input: NormalizedLandmark[] = [
-      makeLandmark(0.2, 0.3, 0.4, 0.9),
-      makeLandmark(0.7, 0.5, -0.1, 0.8),
+      makeLandmark(0.25, 0.5, 0.5, 0.875),
+      makeLandmark(0.75, 0.5, -0.125, 0.5),
     ];
     const result = mirrorLandmarks(input);
-    expect(result[0]).toEqual({ x: 0.8, y: 0.3, z: 0.4, visibility: 0.9 });
-    expect(result[1]).toEqual({ x: 0.3, y: 0.5, z: -0.1, visibility: 0.8 });
+    expect(result[0]).toEqual({ x: 0.75, y: 0.5, z: 0.5, visibility: 0.875 });
+    expect(result[1]).toEqual({ x: 0.25, y: 0.5, z: -0.125, visibility: 0.5 });
   });
 
   it("y / z / visibility は不変", () => {
