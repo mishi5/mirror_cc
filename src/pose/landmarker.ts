@@ -51,17 +51,19 @@ export function detectPose(
   const result: PoseLandmarkerResult = landmarker.detectForVideo(video, timestampMs);
   const detectTimeMs = performance.now() - start;
 
-  const first = result.landmarks[0];
-  const firstWorld = result.worldLandmarks[0];
-  result.close();
-
-  if (!first || !firstWorld) {
-    return null;
+  try {
+    const first = result.landmarks[0];
+    const firstWorld = result.worldLandmarks[0];
+    if (!first || !firstWorld) {
+      return null;
+    }
+    return {
+      timestamp: timestampMs,
+      landmarks: first,
+      worldLandmarks: firstWorld,
+      detectTimeMs,
+    };
+  } finally {
+    result.close();
   }
-  return {
-    timestamp: timestampMs,
-    landmarks: first,
-    worldLandmarks: firstWorld,
-    detectTimeMs,
-  };
 }
