@@ -19,10 +19,13 @@ export class App {
   private statusUi: StatusUi;
   private hud: Hud;
   private overlayCtx: CanvasRenderingContext2D;
+  private overlayWidth = 0;
+  private overlayHeight = 0;
   private stream: MediaStream | null = null;
   private landmarker: PoseLandmarker | null = null;
   private rafId: number | null = null;
   private consecutiveDetectErrors = 0;
+  private isStarting = false;
 
   constructor(dom: AppDom) {
     this.dom = dom;
@@ -33,37 +36,47 @@ export class App {
       throw new Error("2D context not available on overlay canvas");
     }
     this.overlayCtx = ctx;
-    window.addEventListener("resize", this.handleResize);
   }
 
   async start(): Promise<void> {
-    this.statusUi.setStatus({ kind: "loading", message: "カメラを起動中…" });
+    if (this.isStarting) return;
+    this.isStarting = true;
     try {
-      this.stream = await attachWebcam(this.dom.video);
-    } catch (err) {
-      this.handleCameraError(err);
-      return;
-    }
+      // 既存リソースを必ず破棄してから再初期化 (retry 時の二重リソース防止)
+      this.stop();
+      window.addEventListener("resize", this.handleResize);
 
-    this.statusUi.setStatus({
-      kind: "loading",
-      message: "姿勢推定モデルを読み込み中…",
-    });
-    try {
-      this.landmarker = await createPoseLandmarker();
-    } catch (err) {
-      this.handleModelError(err);
-      return;
-    }
+      this.statusUi.setStatus({ kind: "loading", message: "カメラを起動中…" });
+      try {
+        this.stream = await attachWebcam(this.dom.video);
+      } catch (err) {
+        this.handleCameraError(err);
+        return;
+      }
 
-    this.refreshOverlayCtx();
-    this.statusUi.setStatus({ kind: "ok" });
-    this.hud.show();
-    this.consecutiveDetectErrors = 0;
-    this.loop();
+      this.statusUi.setStatus({
+        kind: "loading",
+        message: "姿勢推定モデルを読み込み中…",
+      });
+      try {
+        this.landmarker = await createPoseLandmarker();
+      } catch (err) {
+        this.handleModelError(err);
+        return;
+      }
+
+      this.refreshOverlayCtx();
+      this.statusUi.setStatus({ kind: "ok" });
+      this.hud.show();
+      this.consecutiveDetectErrors = 0;
+      this.loop();
+    } finally {
+      this.isStarting = false;
+    }
   }
 
   stop(): void {
+    window.removeEventListener("resize", this.handleResize);
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -88,6 +101,9 @@ export class App {
     if (ctx) {
       this.overlayCtx = ctx;
     }
+    const rect = this.dom.overlay.getBoundingClientRect();
+    this.overlayWidth = rect.width;
+    this.overlayHeight = rect.height;
   }
 
   private loop = (): void => {
@@ -98,15 +114,13 @@ export class App {
     let detectMs = 0;
     try {
       const frame = detectPose(this.landmarker, this.dom.video, now);
-      const rect = this.dom.overlay.getBoundingClientRect();
       if (frame) {
-        // 注: video と overlay canvas は CSS で scaleX(-1) されているため
-        // mirror 反転はそこで完結する。ここではミラー処理を行わず raw landmark を
-        // そのまま canvas 座標 (= 元画像座標) で描画する。
-        drawOverlay(this.overlayCtx, frame.landmarks, rect.width, rect.height);
+        // video と overlay canvas は CSS で scaleX(-1) されているため
+        // mirror 反転はそこで完結する。raw landmark を canvas 座標で描画する。
+        drawOverlay(this.overlayCtx, frame.landmarks, this.overlayWidth, this.overlayHeight);
         detectMs = frame.detectTimeMs;
       } else {
-        this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
+        this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {
