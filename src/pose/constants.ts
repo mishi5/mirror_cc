@@ -32,9 +32,14 @@ export const DEFAULT_VISIBILITY_THRESHOLD = 0.5;
 export const POSE_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task";
 
-/** @mediapipe/tasks-vision の WASM (jsDelivr 経由)。 */
+/**
+ * @mediapipe/tasks-vision の WASM (jsDelivr 経由)。
+ * 注意: 0.10.16 は npm パッケージから wasm/ ディレクトリが除外されているリリース不具合
+ * (https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.16/wasm/ が 404)。
+ * 0.10.15 以前は jsDelivr で配信されているため、本プロジェクトでは SDK ごと 0.10.15 を採用する。
+ */
 export const VISION_WASM_URL =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.16/wasm";
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm";
 
 /** getUserMedia の希望解像度。実機が下回る場合は自動で fallback。 */
 export const WEBCAM_CONSTRAINTS = {
