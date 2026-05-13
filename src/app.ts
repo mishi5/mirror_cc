@@ -53,6 +53,10 @@ export class App {
         this.handleCameraError(err);
         return;
       }
+      // webcam の自然 aspect を CSS 変数に反映し、#webcam-stage の表示サイズを決める。
+      // canvas は CSS で object-fit が効かないため、stage の aspect を webcam に合わせて
+      // letterbox/pillarbox 表示にし、video と canvas を完全に同じ矩形に重ねる。
+      this.applyWebcamAspect();
 
       this.statusUi.setStatus({
         kind: "loading",
@@ -95,6 +99,17 @@ export class App {
   private handleResize = (): void => {
     this.refreshOverlayCtx();
   };
+
+  private applyWebcamAspect(): void {
+    const { videoWidth, videoHeight } = this.dom.video;
+    if (videoWidth > 0 && videoHeight > 0) {
+      const aspect = videoWidth / videoHeight;
+      document.documentElement.style.setProperty(
+        "--webcam-aspect",
+        String(aspect),
+      );
+    }
+  }
 
   private refreshOverlayCtx(): void {
     const ctx = resizeOverlayCanvas(this.dom.overlay);
