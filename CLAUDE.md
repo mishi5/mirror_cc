@@ -33,6 +33,7 @@ src/
     effects/           # ビーム・シールド・オーラなどのエフェクト
     ui/                # HP/チャージゲージなどの UI
   scenes/              # タイトル / キャリブレーション / 試合 / リザルト
+  ui/                  # 全体 UI (loading/error 等の状態オーバーレイ)
   audio/               # SE / BGM
   debug/               # デバッグオーバーレイ・パラメータ調整
 public/                # 静的アセット
