@@ -18,6 +18,21 @@
         position: relative;
         width: 100vw;
         height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /*
+       * webcam の自然 aspect 比に従って viewport 内に最大収まる矩形を表示する。
+       * --webcam-aspect は webcam attach 後に JS で webcam.videoWidth/videoHeight から
+       * セットされる (デフォルトは 4:3 ≈ 1.3333)。
+       * canvas は CSS の object-fit を使えないため、stage を介して video と完全に
+       * 同じ表示領域に重ねる。
+       */
+      #webcam-stage {
+        position: relative;
+        width: min(100vw, calc(100vh * var(--webcam-aspect, 1.3333)));
+        height: min(100vh, calc(100vw / var(--webcam-aspect, 1.3333)));
       }
       #webcam,
       #overlay {
@@ -25,7 +40,6 @@
         inset: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover;
         transform: scaleX(-1);
       }
       #overlay {
@@ -81,8 +95,10 @@
   </head>
   <body>
     <div id="app">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
+      <div id="webcam-stage">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </div>
       <div id="hud" hidden>
         <span id="hud-fps">FPS: —</span>
         <span id="hud-detect">detect: — ms</span>
