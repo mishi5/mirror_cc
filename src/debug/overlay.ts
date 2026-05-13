@@ -14,6 +14,13 @@ const CONNECTION_WIDTH_PX = 3;
  *
  * canvas は CSS で webcam と同一サイズに重ねており、`transform: scaleX(-1)` で
  * ミラー反転されているため、x の反転は CSS 任せにし overlay 側では行わない。
+ *
+ * @param ctx canvas の 2D context (setTransform で DPR スケール済み)
+ * @param landmarks 33点のランドマーク (raw、ミラー反転前)
+ * @param width  **CSS 論理ピクセル幅** (canvas.width ではなく getBoundingClientRect().width)。
+ *               canvas.width を渡すと DPR が二重に適用され座標が画面外にずれる。
+ * @param height CSS 論理ピクセル高さ
+ * @param threshold visibility のフィルタ閾値 (デフォルト DEFAULT_VISIBILITY_THRESHOLD)
  */
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
@@ -25,7 +32,6 @@ export function drawOverlay(
   ctx.clearRect(0, 0, width, height);
   if (landmarks.length === 0) return;
 
-  // 接続線
   ctx.strokeStyle = CONNECTION_COLOR;
   ctx.lineWidth = CONNECTION_WIDTH_PX;
   ctx.lineCap = "round";
@@ -40,7 +46,6 @@ export function drawOverlay(
     ctx.stroke();
   }
 
-  // ランドマーク (描画対象を絞らず全 33 点、ただし visibility でフィルタ)
   ctx.fillStyle = LANDMARK_COLOR;
   for (const lm of landmarks) {
     if (!isVisible(lm, threshold)) continue;
@@ -53,8 +58,14 @@ export function drawOverlay(
 /**
  * canvas の drawing buffer サイズを CSS サイズ × devicePixelRatio に揃え、
  * 描画コンテキストをそれに合わせてスケールする。Retina 対応。
+ * canvas.width の再代入で 2D state がリセットされるため、resize 後は
+ * 必ず本関数の戻り値を使うこと (古い ctx を再利用しないこと)。
+ *
+ * @returns 新しい 2D context。canvas が 2D を取得できない場合は null。
  */
-export function resizeOverlayCanvas(canvas: HTMLCanvasElement): void {
+export function resizeOverlayCanvas(
+  canvas: HTMLCanvasElement,
+): CanvasRenderingContext2D | null {
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.round(rect.width * dpr);
@@ -63,4 +74,5 @@ export function resizeOverlayCanvas(canvas: HTMLCanvasElement): void {
   if (ctx) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+  return ctx;
 }
