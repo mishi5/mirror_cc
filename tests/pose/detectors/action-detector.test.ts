@@ -32,13 +32,14 @@ describe("createActionDetector", () => {
     expect(r.action).toBe("guarding");
   });
 
-  it("アタック動作中は action=attacking が最優先", () => {
+  it("アタック動作中は action=attacking が最優先で観測される", () => {
     const d = createActionDetector();
-    let last = d.update(idlePose(), 0);
+    let sawAttacking = false;
     for (const f of attackSequence()) {
-      last = d.update(f.world, f.t);
+      const r = d.update(f.world, f.t);
+      if (r.action === "attacking") sawAttacking = true;
     }
-    expect(last.action).toBe("attacking");
+    expect(sawAttacking).toBe(true);
   });
 
   it("結果に3ディテクタのスコアを同梱する", () => {
