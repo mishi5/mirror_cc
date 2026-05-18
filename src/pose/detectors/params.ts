@@ -59,6 +59,6 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     historyLen: 6,
     thrustSpeed: 0.8,
     minThrustDist: 0.15,
-    refractoryMs: 500,
+    refractoryMs: 50,
   },
 };
