@@ -2,7 +2,7 @@ import type { Landmark } from "@mediapipe/tasks-vision";
 import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "../constants";
 import type { DetectorParams } from "./params";
 import type { DetectorScore } from "./types";
-import { jointVec, midpoint, length, type Vec3 } from "./geometry";
+import { jointVec, midpoint, length, sub, type Vec3 } from "./geometry";
 
 export interface ChargeDetector {
   update(
@@ -37,9 +37,14 @@ export function createChargeDetector(
 
     const inBandL = inBand(lw.y, shoulder.y + params.yBandLow, shoulder.y + params.yBandHigh);
     const inBandR = inBand(rw.y, shoulder.y + params.yBandLow, shoulder.y + params.yBandHigh);
+      // band は二値 (0/1) の hard gate: どちらかの手首が高さ帯を外れた瞬間に
+      // score 全体が 0 になる (forward/closeness の連続値とは非対称)。
+      // 高さは「合っているか否か」の制約として意図的にこうしている。
     const band = inBandL && inBandR ? 1 : 0;
 
-    const spread = length({ x: lw.x - rw.x, y: lw.y - rw.y, z: lw.z - rw.z });
+      // spread が maxHandSpread を超えた分を maxHandSpread で正規化して減衰させる
+      // (spread = 2 * maxHandSpread で closeness = 0)。
+    const spread = length(sub(lw, rw));
     const closeness = clamp01(1 - Math.max(0, spread - params.maxHandSpread) / params.maxHandSpread);
 
     return forward * band * closeness;

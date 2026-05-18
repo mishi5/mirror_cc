@@ -1,9 +1,32 @@
 import { describe, it, expect } from "vitest";
 import { createChargeDetector } from "../../../src/pose/detectors/charge";
 import { DEFAULT_DETECTOR_PARAMS } from "../../../src/pose/detectors/params";
-import { idlePose, chargePose } from "./fixtures";
+import { idlePose, chargePose, makeWorld } from "./fixtures";
+import { KEY_JOINT_INDICES } from "../../../src/pose/constants";
 
 const P = DEFAULT_DETECTOR_PARAMS.charge;
+
+const K = KEY_JOINT_INDICES;
+
+/** forward ≈ 0.5 (wrist z=-0.05, forwardZ=0.1), band/closeness=1 → rawScore ≈ 0.5 */
+function partialChargeWorld() {
+  return makeWorld({
+    [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+    [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+    [K.LEFT_WRIST]: { x: 0.1, y: -0.25, z: -0.05 },
+    [K.RIGHT_WRIST]: { x: -0.1, y: -0.25, z: -0.05 },
+  });
+}
+
+/** charge と同じだが手首 y が高さ帯外 (y=0.2、肩 -0.5 + yBandHigh 0.45 = -0.05 を大きく超過) */
+function outOfBandWorld() {
+  return makeWorld({
+    [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+    [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+    [K.LEFT_WRIST]: { x: 0.1, y: 0.2, z: -0.28 },
+    [K.RIGHT_WRIST]: { x: -0.1, y: 0.2, z: -0.28 },
+  });
+}
 
 describe("createChargeDetector", () => {
   it("idle 姿勢では score が低く active=false", () => {
@@ -44,5 +67,43 @@ describe("createChargeDetector", () => {
     a.update(chargePose(), P.minHoldMs + 1);
     const rb = b.update(idlePose(), P.minHoldMs + 1);
     expect(rb.active).toBe(false);
+  });
+
+  it("T-1: hold 中に1フレームでも条件が切れるとタイマーがリセットされ早期 active しない", () => {
+    const d = createChargeDetector(P);
+    d.update(chargePose(), 0);          // candidate 開始
+    d.update(idlePose(), 100);          // 中断 → candidate リセット
+    d.update(chargePose(), 150);        // 再開始 (candidateSince=150)
+    const mid = d.update(chargePose(), 250); // 250-150=100 < minHoldMs(200)
+    expect(mid.active).toBe(false);
+    const late = d.update(chargePose(), 360); // 360-150=210 >= 200
+    expect(late.active).toBe(true);
+  });
+
+  it("T-2: active 中に score がヒステリシス帯 [exit,enter) でも active を維持", () => {
+    const d = createChargeDetector(P);
+    d.update(chargePose(), 0);
+    const r1 = d.update(chargePose(), P.minHoldMs + 1);
+    expect(r1.active).toBe(true);
+    const band = d.update(partialChargeWorld(), P.minHoldMs + 200);
+    expect(band.score).toBeGreaterThanOrEqual(P.exitScore);
+    expect(band.score).toBeLessThan(P.enterScore);
+    expect(band.active).toBe(true); // exitScore を下回らない限り維持
+  });
+
+  it("T-3: 手首が高さ帯を外れると score=0 (band の hard gate)", () => {
+    const d = createChargeDetector(P);
+    const r = d.update(outOfBandWorld(), 0);
+    expect(r.score).toBe(0);
+    expect(r.active).toBe(false);
+  });
+
+  it("T-4: active→idle 遷移テストで中間状態を明示 assert", () => {
+    const d = createChargeDetector(P);
+    d.update(chargePose(), 0);
+    const r1 = d.update(chargePose(), P.minHoldMs + 1);
+    expect(r1.active).toBe(true); // 前提を明示
+    const r = d.update(idlePose(), P.minHoldMs + 200);
+    expect(r.active).toBe(false);
   });
 });
