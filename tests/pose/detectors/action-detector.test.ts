@@ -25,10 +25,16 @@ describe("createActionDetector", () => {
     expect(r.charge.active).toBe(true);
   });
 
-  it("guard 姿勢を保持すると action=guarding。guard は charge より優先", () => {
+  it("guard と charge が同時に active のとき guard が優先される", () => {
     const d = createActionDetector();
     d.update(guardPose(), 0);
-    const r = d.update(guardPose(), MS.guard.minHoldMs + 1);
+    // charge.minHoldMs(200) > guard.minHoldMs(150)。両方の minHoldMs を越える
+    // タイムスタンプまで guardPose を保持すると charge も guard も active になる
+    // (guardPose は charge 条件も満たすため)。優先度で guarding になるはず。
+    const t = MS.charge.minHoldMs + 1;
+    const r = d.update(guardPose(), t);
+    expect(r.charge.active).toBe(true);
+    expect(r.guard.active).toBe(true);
     expect(r.action).toBe("guarding");
   });
 
@@ -50,8 +56,17 @@ describe("createActionDetector", () => {
     expect(r).toHaveProperty("attack");
   });
 
-  it("カスタム params を受け取れる", () => {
-    const d = createActionDetector(DEFAULT_DETECTOR_PARAMS);
-    expect(d.update(idlePose(), 0).action).toBe("idle");
+  it("カスタム params が下位ディテクタに伝播する (charge.minHoldMs を極大化すると charging しない)", () => {
+    const slow = {
+      ...DEFAULT_DETECTOR_PARAMS,
+      charge: { ...DEFAULT_DETECTOR_PARAMS.charge, minHoldMs: 1_000_000 },
+    };
+    const d = createActionDetector(slow);
+    d.update(chargePose(), 0);
+    // 通常なら charge.minHoldMs(200) 経過で charging だが、minHoldMs=1e6 なので
+    // 現実的なタイムスタンプでは active にならない
+    const r = d.update(chargePose(), 5000);
+    expect(r.charge.active).toBe(false);
+    expect(r.action).toBe("idle");
   });
 });
