@@ -15,7 +15,7 @@ export function sub(a: Vec3, b: Vec3): Vec3 {
 }
 
 export function length(v: Vec3): number {
-  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  return Math.sqrt(dot(v, v));
 }
 
 export function midpoint(a: Vec3, b: Vec3): Vec3 {
