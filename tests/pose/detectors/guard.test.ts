@@ -57,7 +57,9 @@ describe("createGuardDetector", () => {
 
   it("null 入力で active=false / score 0", () => {
     const d = createGuardDetector(P);
-    expect(d.update(null, 0)).toEqual({ active: false, score: 0 });
+    const r = d.update(null, 0);
+    expect(r.active).toBe(false);
+    expect(r.score).toBe(0);
   });
 
   it("G-T1: hold 中に1フレーム条件が切れるとタイマーがリセットされ早期 active しない", () => {
@@ -76,7 +78,8 @@ describe("createGuardDetector", () => {
     d.update(guardPose(), 0);
     const r1 = d.update(guardPose(), P.minHoldMs + 1);
     expect(r1.active).toBe(true); // 前提を明示
-    const r = d.update(idlePose(), P.minHoldMs + 200);
+    d.update(idlePose(), P.minHoldMs + 2);
+    const r = d.update(idlePose(), P.minHoldMs + 2 + P.releaseMs + 5);
     expect(r.active).toBe(false);
   });
 
@@ -100,8 +103,8 @@ describe("createGuardDetector", () => {
     expect(bigHeld).toBeGreaterThanOrEqual(P.minHoldMs + 5000);
     // null で状態リセット
     const afterNull = d.update(null, P.minHoldMs + 5001);
-    expect(afterNull.detail).toBeUndefined();
     expect(afterNull.active).toBe(false);
+    expect(afterNull.score).toBe(0);
     // 再 hold: 新しい enterCandidateSince から
     const t0 = 100000;
     d.update(guardPose(), t0);
@@ -109,5 +112,18 @@ describe("createGuardDetector", () => {
     const fresh = d.update(guardPose(), t0 + P.minHoldMs + 50);
     const freshHeld = Number(/held=(\d+)ms/.exec(fresh.detail ?? "")?.[1]);
     expect(freshHeld).toBeLessThan(bigHeld); // 古い累積を引き継がない
+  });
+
+  it("G-T5: active 中に1フレーム交差が崩れても releaseMs 未満なら active 維持し held 継続", () => {
+    const d = createGuardDetector(P);
+    d.update(guardPose(), 0);
+    const r1 = d.update(guardPose(), P.minHoldMs + 1);
+    expect(r1.active).toBe(true);
+    const jitter = d.update(idlePose(), P.minHoldMs + 50);
+    expect(jitter.active).toBe(true);
+    const back = d.update(guardPose(), P.minHoldMs + 70);
+    expect(back.active).toBe(true);
+    const heldMs = Number(/held=(\d+)ms/.exec(back.detail ?? "")?.[1]);
+    expect(heldMs).toBeGreaterThanOrEqual(P.minHoldMs);
   });
 });

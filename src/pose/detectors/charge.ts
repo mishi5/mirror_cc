@@ -24,6 +24,7 @@ export function createChargeDetector(
 ): ChargeDetector {
   let active = false;
   let enterCandidateSince: number | null = null;
+  let exitCandidateSince: number | null = null;
 
   function evaluate(world: ReadonlyArray<Readonly<Landmark>>): {
     score: number;
@@ -74,20 +75,28 @@ export function createChargeDetector(
       if (!world) {
         active = false;
         enterCandidateSince = null;
+        exitCandidateSince = null;
         return { active: false, score: 0, detail: "fwd=- bnd=- cls=- fex=-" };
       }
       const { score, detail } = evaluate(world);
 
       if (active) {
         if (score < params.exitScore) {
-          active = false;
-          enterCandidateSince = null;
+          if (exitCandidateSince === null) exitCandidateSince = timestampMs;
+          if (timestampMs - exitCandidateSince >= params.releaseMs) {
+            active = false;
+            enterCandidateSince = null;
+            exitCandidateSince = null;
+          }
+        } else {
+          exitCandidateSince = null;
         }
       } else {
         if (score >= params.enterScore) {
           if (enterCandidateSince === null) enterCandidateSince = timestampMs;
           if (timestampMs - enterCandidateSince >= params.minHoldMs) {
             active = true;
+            exitCandidateSince = null;
           }
         } else {
           enterCandidateSince = null;

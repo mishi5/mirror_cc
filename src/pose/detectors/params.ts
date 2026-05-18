@@ -18,6 +18,8 @@ export interface DetectorParams {
     readonly enterScore: number;
     readonly exitScore: number;
     readonly minHoldMs: number;
+    /** active 解除前に score < exitScore が継続必要な時間 (ms)。1フレームのジッタで落とさない */
+    readonly releaseMs: number;
   };
   readonly guard: {
     /** |wrist.y - nose.y| 許容 (m)。顔の高さ帯 */
@@ -27,6 +29,8 @@ export interface DetectorParams {
     readonly enterScore: number;
     readonly exitScore: number;
     readonly minHoldMs: number;
+    /** active 解除前に score < exitScore が継続必要な時間 (ms)。交差ジッタで落とさない */
+    readonly releaseMs: number;
   };
   readonly attack: {
     /** 速度推定の時間窓 (ms)。この窓内のサンプルで oldest→newest を評価 */
@@ -52,6 +56,7 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     enterScore: 0.6,
     exitScore: 0.4,
     minHoldMs: 200,
+    releaseMs: 150,
   },
   guard: {
     faceBandY: 0.2,
@@ -59,6 +64,7 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     enterScore: 0.6,
     exitScore: 0.4,
     minHoldMs: 150,
+    releaseMs: 200,
   },
   attack: {
     windowMs: 250,

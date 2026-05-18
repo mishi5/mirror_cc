@@ -49,7 +49,8 @@ describe("createChargeDetector", () => {
     const d = createChargeDetector(P);
     d.update(chargePose(), 0);
     d.update(chargePose(), P.minHoldMs + 1);
-    const r = d.update(idlePose(), P.minHoldMs + 200);
+    d.update(idlePose(), P.minHoldMs + 2);
+    const r = d.update(idlePose(), P.minHoldMs + 2 + P.releaseMs + 5);
     expect(r.active).toBe(false);
   });
 
@@ -103,7 +104,8 @@ describe("createChargeDetector", () => {
     d.update(chargePose(), 0);
     const r1 = d.update(chargePose(), P.minHoldMs + 1);
     expect(r1.active).toBe(true); // 前提を明示
-    const r = d.update(idlePose(), P.minHoldMs + 200);
+    d.update(idlePose(), P.minHoldMs + 2);
+    const r = d.update(idlePose(), P.minHoldMs + 2 + P.releaseMs + 5);
     expect(r.active).toBe(false);
   });
 
@@ -113,5 +115,16 @@ describe("createChargeDetector", () => {
     const r = d.update(guardPose(), 0);
     expect(r.score).toBe(0);
     expect(r.active).toBe(false);
+  });
+
+  it("T-5: active 中に1フレームだけ score=0 でも releaseMs 未満なら active 維持", () => {
+    const d = createChargeDetector(P);
+    d.update(chargePose(), 0);
+    const r1 = d.update(chargePose(), P.minHoldMs + 1);
+    expect(r1.active).toBe(true);
+    const jitter = d.update(idlePose(), P.minHoldMs + 50);
+    expect(jitter.active).toBe(true);
+    const back = d.update(chargePose(), P.minHoldMs + 70);
+    expect(back.active).toBe(true);
   });
 });
