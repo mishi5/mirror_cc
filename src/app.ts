@@ -4,11 +4,19 @@ import { createPoseLandmarker, detectPose } from "./pose/landmarker";
 import { drawOverlay, resizeOverlayCanvas } from "./debug/overlay";
 import { Hud } from "./debug/hud";
 import { StatusUi } from "./ui/status";
+import { createActionDetector, type ActionDetector } from "./pose/detectors/action-detector";
+import { ActionHud } from "./debug/action-hud";
 
 export interface AppDom {
   readonly video: HTMLVideoElement;
   readonly overlay: HTMLCanvasElement;
-  readonly hud: { root: HTMLElement; fps: HTMLElement; detect: HTMLElement };
+  readonly hud: {
+    root: HTMLElement;
+    fps: HTMLElement;
+    detect: HTMLElement;
+    action: HTMLElement;
+    scores: HTMLElement;
+  };
   readonly status: { root: HTMLElement; message: HTMLElement; retry: HTMLButtonElement };
 }
 
@@ -18,6 +26,8 @@ export class App {
   private dom: AppDom;
   private statusUi: StatusUi;
   private hud: Hud;
+  private actionDetector: ActionDetector = createActionDetector();
+  private actionHud: ActionHud;
   private overlayCtx: CanvasRenderingContext2D;
   private overlayWidth = 0;
   private overlayHeight = 0;
@@ -31,6 +41,7 @@ export class App {
     this.dom = dom;
     this.statusUi = new StatusUi(dom.status.root, dom.status.message, dom.status.retry);
     this.hud = new Hud(dom.hud.root, dom.hud.fps, dom.hud.detect);
+    this.actionHud = new ActionHud(dom.hud.action, dom.hud.scores);
     const ctx = dom.overlay.getContext("2d");
     if (!ctx) {
       throw new Error("2D context not available on overlay canvas");
@@ -134,8 +145,15 @@ export class App {
         // mirror 反転はそこで完結する。raw landmark を canvas 座標で描画する。
         drawOverlay(this.overlayCtx, frame.landmarks, this.overlayWidth, this.overlayHeight);
         detectMs = frame.detectTimeMs;
+        const actionResult = this.actionDetector.update(
+          frame.worldLandmarks,
+          now,
+        );
+        this.actionHud.update(actionResult);
       } else {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
+        const actionResult = this.actionDetector.update(null, now);
+        this.actionHud.update(actionResult);
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {

@@ -15,6 +15,8 @@ const app = new App({
     root: getRequired("hud", HTMLElement),
     fps: getRequired("hud-fps", HTMLElement),
     detect: getRequired("hud-detect", HTMLElement),
+    action: getRequired("hud-action", HTMLElement),
+    scores: getRequired("hud-scores", HTMLElement),
   },
   status: {
     root: getRequired("status", HTMLElement),
