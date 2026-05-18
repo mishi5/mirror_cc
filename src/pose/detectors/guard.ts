@@ -21,7 +21,6 @@ export function createGuardDetector(
   let active = false;
   let enterCandidateSince: number | null = null;
   let activeSince: number | null = null;
-  let lastTs = 0;
 
   function rawScore(world: ReadonlyArray<Readonly<Landmark>>): number {
     const ls = jointVec(world, KEY_JOINT_INDICES.LEFT_SHOULDER, DEFAULT_VISIBILITY_THRESHOLD);
@@ -43,6 +42,9 @@ export function createGuardDetector(
     const fwdR = ns.z - rw.z >= params.forwardZ;
     if (!fwdL || !fwdR) return 0;
 
+    // rawScore は 0 か 1 の二値 (crossed)。enterScore/exitScore は形式上
+    // ヒステリシス境界だが、実効的には "0.5 を境に on/off" と同等。
+    // 交差度を将来連続値化する場合はここを変更する。
     // 交差: 左肩は x 正側 (MediaPipe world coords)。
     // 非交差時は left wrist が center より x 正、right wrist が x 負。
     // 交差時は符号が反転する。両手首が反対側に来たら 1。
@@ -55,7 +57,6 @@ export function createGuardDetector(
 
   return {
     update(world, timestampMs): DetectorScore {
-      lastTs = timestampMs;
       if (!world) {
         active = false;
         enterCandidateSince = null;
@@ -75,7 +76,7 @@ export function createGuardDetector(
           if (enterCandidateSince === null) enterCandidateSince = timestampMs;
           if (timestampMs - enterCandidateSince >= params.minHoldMs) {
             active = true;
-            activeSince = timestampMs;
+            activeSince = enterCandidateSince;
           }
         } else {
           enterCandidateSince = null;
@@ -84,7 +85,7 @@ export function createGuardDetector(
 
       const detail =
         active && activeSince !== null
-          ? `held=${Math.round(lastTs - activeSince)}ms`
+          ? `held=${Math.round(timestampMs - activeSince)}ms`
           : undefined;
       return { active, score, detail };
     },
