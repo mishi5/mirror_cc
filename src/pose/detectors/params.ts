@@ -13,6 +13,8 @@ export interface DetectorParams {
     readonly yBandLow: number;
     /** 手首 y の許容上限オフセット (肩 y 基準) */
     readonly yBandHigh: number;
+    /** |wrist.y - nose.y| <= この値なら顔の高さとみなし charge から除外 (guard 領域と排他化) */
+    readonly faceExclY: number;
     readonly enterScore: number;
     readonly exitScore: number;
     readonly minHoldMs: number;
@@ -46,6 +48,7 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     maxHandSpread: 0.45,
     yBandLow: -0.1,
     yBandHigh: 0.45,
+    faceExclY: 0.15,
     enterScore: 0.6,
     exitScore: 0.4,
     minHoldMs: 200,

@@ -25,16 +25,12 @@ describe("createActionDetector", () => {
     expect(r.charge.active).toBe(true);
   });
 
-  it("guard と charge が同時に active のとき guard が優先される", () => {
+  it("guard 姿勢では guarding になり charge は同時 active にならない (face 排他)", () => {
     const d = createActionDetector();
     d.update(guardPose(), 0);
-    // charge.minHoldMs(200) > guard.minHoldMs(150)。両方の minHoldMs を越える
-    // タイムスタンプまで guardPose を保持すると charge も guard も active になる
-    // (guardPose は charge 条件も満たすため)。優先度で guarding になるはず。
-    const t = MS.charge.minHoldMs + 1;
-    const r = d.update(guardPose(), t);
-    expect(r.charge.active).toBe(true);
+    const r = d.update(guardPose(), MS.charge.minHoldMs + 1);
     expect(r.guard.active).toBe(true);
+    expect(r.charge.active).toBe(false);
     expect(r.action).toBe("guarding");
   });
 

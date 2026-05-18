@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createChargeDetector } from "../../../src/pose/detectors/charge";
 import { DEFAULT_DETECTOR_PARAMS } from "../../../src/pose/detectors/params";
-import { idlePose, chargePose, makeWorld } from "./fixtures";
+import { idlePose, chargePose, guardPose, makeWorld } from "./fixtures";
 import { KEY_JOINT_INDICES } from "../../../src/pose/constants";
 
 const P = DEFAULT_DETECTOR_PARAMS.charge;
@@ -104,6 +104,14 @@ describe("createChargeDetector", () => {
     const r1 = d.update(chargePose(), P.minHoldMs + 1);
     expect(r1.active).toBe(true); // 前提を明示
     const r = d.update(idlePose(), P.minHoldMs + 200);
+    expect(r.active).toBe(false);
+  });
+
+  it("guard 姿勢 (手首が顔の高さ) は faceExcl で charge から除外され score=0", () => {
+    const d = createChargeDetector(P);
+    // guardPose: 手首 y≈-0.6, nose y=-0.62 → |diff|≈0.02 <= faceExclY(0.15) → 除外
+    const r = d.update(guardPose(), 0);
+    expect(r.score).toBe(0);
     expect(r.active).toBe(false);
   });
 });
