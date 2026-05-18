@@ -1,0 +1,87 @@
+import type { Landmark } from "@mediapipe/tasks-vision";
+import { KEY_JOINT_INDICES } from "../../../src/pose/constants";
+
+/** 33 点を visibility 0 のダミーで初期化し、指定 index だけ上書きする。 */
+export function makeWorld(
+  overrides: Record<number, { x: number; y: number; z: number; visibility?: number }>,
+): Landmark[] {
+  const world: Landmark[] = [];
+  for (let i = 0; i < 33; i++) {
+    world.push({ x: 0, y: 0, z: 0, visibility: 0 });
+  }
+  for (const [idxStr, v] of Object.entries(overrides)) {
+    const idx = Number(idxStr);
+    world[idx] = { x: v.x, y: v.y, z: v.z, visibility: v.visibility ?? 0.95 };
+  }
+  return world;
+}
+
+const K = KEY_JOINT_INDICES;
+
+/** 直立・腕を下げた idle 姿勢。肩より下に手首、前後 z はほぼ 0。 */
+export function idlePose(): Landmark[] {
+  return makeWorld({
+    [K.NOSE]: { x: 0, y: -0.62, z: -0.02 },
+    [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+    [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+    [K.LEFT_ELBOW]: { x: 0.2, y: -0.25, z: 0 },
+    [K.RIGHT_ELBOW]: { x: -0.2, y: -0.25, z: 0 },
+    [K.LEFT_WRIST]: { x: 0.21, y: 0.0, z: 0 },
+    [K.RIGHT_WRIST]: { x: -0.21, y: 0.0, z: 0 },
+    [K.LEFT_INDEX]: { x: 0.21, y: 0.08, z: 0 },
+    [K.RIGHT_INDEX]: { x: -0.21, y: 0.08, z: 0 },
+  });
+}
+
+/** 両手を体の前 (z 負方向) で胸〜腹の高さ、左右を寄せたチャージ姿勢。 */
+export function chargePose(): Landmark[] {
+  return makeWorld({
+    [K.NOSE]: { x: 0, y: -0.62, z: -0.02 },
+    [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+    [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+    [K.LEFT_ELBOW]: { x: 0.16, y: -0.3, z: -0.15 },
+    [K.RIGHT_ELBOW]: { x: -0.16, y: -0.3, z: -0.15 },
+    [K.LEFT_WRIST]: { x: 0.1, y: -0.25, z: -0.28 },
+    [K.RIGHT_WRIST]: { x: -0.1, y: -0.25, z: -0.28 },
+    [K.LEFT_INDEX]: { x: 0.08, y: -0.25, z: -0.32 },
+    [K.RIGHT_INDEX]: { x: -0.08, y: -0.25, z: -0.32 },
+  });
+}
+
+/** 両手首を顔の高さで左右交差させ、顔の前 (z 負) に置いたガード姿勢。 */
+export function guardPose(): Landmark[] {
+  return makeWorld({
+    [K.NOSE]: { x: 0, y: -0.62, z: -0.02 },
+    [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+    [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+    [K.LEFT_ELBOW]: { x: 0.1, y: -0.45, z: -0.15 },
+    [K.RIGHT_ELBOW]: { x: -0.1, y: -0.45, z: -0.15 },
+    [K.LEFT_WRIST]: { x: -0.08, y: -0.6, z: -0.2 },
+    [K.RIGHT_WRIST]: { x: 0.08, y: -0.6, z: -0.2 },
+    [K.LEFT_INDEX]: { x: -0.1, y: -0.62, z: -0.22 },
+    [K.RIGHT_INDEX]: { x: 0.1, y: -0.62, z: -0.22 },
+  });
+}
+
+/**
+ * アタックのフレーム列。手首が時間とともに前方 (z 負方向) へ急速移動する。
+ * 各要素は { world, t } で t は ms。
+ */
+export function attackSequence(): ReadonlyArray<{ world: Landmark[]; t: number }> {
+  const frames: { world: Landmark[]; t: number }[] = [];
+  const baseZ = -0.05;
+  for (let i = 0; i < 6; i++) {
+    const z = baseZ - i * 0.06;
+    frames.push({
+      t: i * 60,
+      world: makeWorld({
+        [K.NOSE]: { x: 0, y: -0.62, z: -0.02 },
+        [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+        [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+        [K.LEFT_WRIST]: { x: 0.15, y: -0.35, z: z },
+        [K.RIGHT_WRIST]: { x: -0.15, y: -0.35, z: z },
+      }),
+    });
+  }
+  return frames;
+}
