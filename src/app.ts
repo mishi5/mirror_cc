@@ -105,6 +105,10 @@ export class App {
       this.landmarker = null;
     }
     this.hud.hide();
+    // ActionDetector の内部履歴・クールタイムを破棄し、retry 時に
+    // stale state を持ち越さない (stop() の clean-slate 保証に合わせる)。
+    this.actionDetector = createActionDetector();
+    this.actionHud.clear();
   }
 
   private handleResize = (): void => {
