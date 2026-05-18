@@ -27,13 +27,15 @@ export interface DetectorParams {
     readonly minHoldMs: number;
   };
   readonly attack: {
-    /** フレーム履歴本数 */
-    readonly historyLen: number;
+    /** 速度推定の時間窓 (ms)。この窓内のサンプルで oldest→newest を評価 */
+    readonly windowMs: number;
+    /** 評価に必要な最小スパン (ms)。これ未満は速度が不安定なので評価しない */
+    readonly minWindowMs: number;
     /** 前方速度閾値 (m/s) */
     readonly thrustSpeed: number;
-    /** 履歴最古フレームからの前方移動量の最小値 (m) */
+    /** 窓内 oldest→newest の前方移動量の最小値 (m) */
     readonly minThrustDist: number;
-    /** 連続発火抑止時間 (ms)。姿勢の再発火抑止であり、ゲームのガードクールタイムとは別 */
+    /** 連続発火抑止時間 (ms)。姿勢の再発火抑止であり、ゲームのクールタイムとは別 */
     readonly refractoryMs: number;
   };
 }
@@ -56,9 +58,10 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     minHoldMs: 150,
   },
   attack: {
-    historyLen: 6,
-    thrustSpeed: 0.8,
-    minThrustDist: 0.15,
+    windowMs: 250,
+    minWindowMs: 80,
+    thrustSpeed: 0.35,
+    minThrustDist: 0.07,
     refractoryMs: 500,
   },
 };

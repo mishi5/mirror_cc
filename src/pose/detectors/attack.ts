@@ -19,19 +19,14 @@ interface Sample {
 
 /**
  * アタック: 左右どちらかの手首が前方 (z 負方向) へ thrustSpeed (m/s) 以上で移動し、
- * 履歴最古からの前方移動量が minThrustDist 以上。発火後 refractoryMs は再発火しない。
+ * 時間窓内 oldest→newest の前方移動量が minThrustDist 以上。発火後 refractoryMs は再発火しない。
  *
- * 前提: 両手首が visibility 閾値を超えて初めて 1 サンプルを記録する。どちらかが
- * 低 visibility / 未検出のフレームは履歴をクリアして idle 復帰する (charge/guard と
- * 同じ状態リセット方針。resume 後は historyLen フレーム分の warm-up を経て再評価)。
+ * 設計: 時間ベースの窓 (windowMs)。低 visibility / 未検出フレームは「サンプルを追加
+ * しないだけ」で履歴は消さない。これにより速い突き出し中のモーションブラー (一時的な
+ * visibility 低下) で窓が壊れない。古いサンプルは windowMs の時間失効で自然に消えるため、
+ * 長時間の不在は自己回復する (frame-count ではなく時間基準なのでフレームレート非依存)。
  *
- * チューニング注記: historyLen を大きくすると速度推定は安定するが、検出開始
- * (および dropout からの復帰) までに historyLen フレーム分の遅延が出る。
- * 実機 60fps (~16ms/frame) で historyLen=6 なら warm-up ≈ 83ms。
- *
- * 履歴はインスタンス内のリングバッファ。state はインスタンスに閉じる
- * (将来 Map<poseIndex,...> で2人化)。dt は newest.t-oldest.t を使うため
- * フレームレート非依存。
+ * 履歴・lastFireMs はインスタンスに閉じる (将来 Map<poseIndex,...> で2人化)。
  */
 export function createAttackDetector(
   params: DetectorParams["attack"],
@@ -39,56 +34,47 @@ export function createAttackDetector(
   const history: Sample[] = [];
   let lastFireMs: number | null = null;
 
-  function push(s: Sample): void {
-    history.push(s);
-    if (history.length > params.historyLen) history.shift();
-  }
-
   return {
     update(world, timestampMs): DetectorScore {
-      if (!world) {
-        history.length = 0;
-        return { active: false, score: 0 };
+      if (world) {
+        const lw = jointVec(world, KEY_JOINT_INDICES.LEFT_WRIST, DEFAULT_VISIBILITY_THRESHOLD);
+        const rw = jointVec(world, KEY_JOINT_INDICES.RIGHT_WRIST, DEFAULT_VISIBILITY_THRESHOLD);
+        if (lw && rw) {
+          history.push({ lz: lw.z, rz: rw.z, t: timestampMs });
+        }
       }
-      const lw = jointVec(world, KEY_JOINT_INDICES.LEFT_WRIST, DEFAULT_VISIBILITY_THRESHOLD);
-      const rw = jointVec(world, KEY_JOINT_INDICES.RIGHT_WRIST, DEFAULT_VISIBILITY_THRESHOLD);
-      if (!lw || !rw) {
-        history.length = 0;
-        return { active: false, score: 0 };
-      }
-
-      push({ lz: lw.z, rz: rw.z, t: timestampMs });
-      if (history.length < params.historyLen) {
-        return { active: false, score: 0 };
+      // 時間窓外の古いサンプルを失効 (履歴クリアはしない)
+      const cutoff = timestampMs - params.windowMs;
+      while (history.length > 0 && history[0]!.t < cutoff) {
+        history.shift();
       }
 
+      if (history.length < 2) {
+        return { active: false, score: 0, detail: "spd=- dst=-" };
+      }
       const oldest = history[0]!;
       const newest = history[history.length - 1]!;
-      const dt = (newest.t - oldest.t) / 1000;
-      if (dt <= 0) {
-        return { active: false, score: 0 };
+      const spanMs = newest.t - oldest.t;
+      if (spanMs < params.minWindowMs) {
+        return { active: false, score: 0, detail: "spd=- dst=-" };
       }
-
-      // 前方移動量 (z 負方向 = oldest.z - newest.z が正)
+      const dt = spanMs / 1000;
       const distL = oldest.lz - newest.lz;
       const distR = oldest.rz - newest.rz;
       const dist = Math.max(distL, distR);
       const speed = dist / dt;
-
       const score = clamp01(speed / params.thrustSpeed);
 
       const refractory =
         lastFireMs !== null && timestampMs - lastFireMs < params.refractoryMs;
-
       const active =
-        !refractory &&
-        speed >= params.thrustSpeed &&
-        dist >= params.minThrustDist;
-
+        !refractory && speed >= params.thrustSpeed && dist >= params.minThrustDist;
       if (active) {
         lastFireMs = timestampMs;
       }
-      return { active, score };
+
+      const detail = `spd=${speed.toFixed(2)} dst=${dist.toFixed(3)}`;
+      return { active, score, detail };
     },
   };
 }
