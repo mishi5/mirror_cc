@@ -88,6 +88,19 @@ describe("createAttackDetector", () => {
     expect(last.detail).toMatch(/spd=.* dst=.*/);
   });
 
+  it("detail に直近ピーク pkS/pkD を出し、スラストで値が立つ", () => {
+    const d = createAttackDetector(P);
+    let last = d.update(idlePose(), 0);
+    for (const f of attackSequence()) last = d.update(f.world, f.t);
+    const m = /pkS=([0-9.]+) pkD=([0-9.]+)/.exec(last.detail ?? "");
+    expect(m).not.toBeNull();
+    const pkS = Number(m![1]);
+    const pkD = Number(m![2]);
+    // attackSequence は速度 ~1.0 m/s, 前方移動 ~0.24m に達する
+    expect(pkS).toBeGreaterThan(0.3);
+    expect(pkD).toBeGreaterThan(0.07);
+  });
+
   it("インスタンスごとに履歴が独立", () => {
     const a = createAttackDetector(P);
     const b = createAttackDetector(P);

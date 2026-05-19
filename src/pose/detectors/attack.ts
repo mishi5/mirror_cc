@@ -28,11 +28,29 @@ interface Sample {
  *
  * 履歴・lastFireMs はインスタンスに閉じる (将来 Map<poseIndex,...> で2人化)。
  */
+/**
+ * spd/dst の直近ピークを保持する時間 (ms)。過渡的なアタックは瞬間値が読めないため、
+ * この期間の最大値を HUD に出して実測チューニングに使う。期間経過で 0 に減衰。
+ */
+const PEAK_HOLD_MS = 1500;
+
 export function createAttackDetector(
   params: DetectorParams["attack"],
 ): AttackDetector {
   const history: Sample[] = [];
   let lastFireMs: number | null = null;
+  // 直近 PEAK_HOLD_MS の spd/dst ピーク (計器用)
+  let peakSpeed = 0;
+  let peakDist = 0;
+  let peakImprovedMs = 0;
+
+  function peakDetailSuffix(timestampMs: number): string {
+    if (peakImprovedMs !== 0 && timestampMs - peakImprovedMs > PEAK_HOLD_MS) {
+      peakSpeed = 0;
+      peakDist = 0;
+    }
+    return ` pkS=${peakSpeed.toFixed(2)} pkD=${peakDist.toFixed(3)}`;
+  }
 
   return {
     update(world, timestampMs): DetectorScore {
@@ -50,13 +68,13 @@ export function createAttackDetector(
       }
 
       if (history.length < 2) {
-        return { active: false, score: 0, detail: "spd=- dst=-" };
+        return { active: false, score: 0, detail: "spd=- dst=-" + peakDetailSuffix(timestampMs) };
       }
       const oldest = history[0]!;
       const newest = history[history.length - 1]!;
       const spanMs = newest.t - oldest.t;
       if (spanMs < params.minWindowMs) {
-        return { active: false, score: 0, detail: "spd=- dst=-" };
+        return { active: false, score: 0, detail: "spd=- dst=-" + peakDetailSuffix(timestampMs) };
       }
       const dt = spanMs / 1000;
       const distL = oldest.lz - newest.lz;
@@ -64,6 +82,16 @@ export function createAttackDetector(
       const dist = Math.max(distL, distR);
       const speed = dist / dt;
       const score = clamp01(speed / params.thrustSpeed);
+
+      // ピーク更新 (計器用)
+      if (speed > peakSpeed) {
+        peakSpeed = speed;
+        peakImprovedMs = timestampMs;
+      }
+      if (dist > peakDist) {
+        peakDist = dist;
+        peakImprovedMs = timestampMs;
+      }
 
       const refractory =
         lastFireMs !== null && timestampMs - lastFireMs < params.refractoryMs;
@@ -73,7 +101,9 @@ export function createAttackDetector(
         lastFireMs = timestampMs;
       }
 
-      const detail = `spd=${speed.toFixed(2)} dst=${dist.toFixed(3)}`;
+      const detail =
+        `spd=${speed.toFixed(2)} dst=${dist.toFixed(3)}` +
+        peakDetailSuffix(timestampMs);
       return { active, score, detail };
     },
   };
