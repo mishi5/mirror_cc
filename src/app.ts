@@ -6,7 +6,21 @@ import { Hud } from "./debug/hud";
 import { StatusUi } from "./ui/status";
 import { createActionDetector, type ActionDetector } from "./pose/detectors/action-detector";
 import { ActionHud } from "./debug/action-hud";
+import { DebugRecorder } from "./debug/recorder";
 import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "./pose/constants";
+import { jointVec, sub, length } from "./pose/detectors/geometry";
+
+/** 肩↔手首の 3D 距離 (腕の伸展量, m)。取得不可なら null。新アタック信号の候補。 */
+function armExtension(
+  world: ReadonlyArray<Readonly<{ x: number; y: number; z: number; visibility?: number }>>,
+  shoulderIdx: number,
+  wristIdx: number,
+): number | null {
+  const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  if (!s || !w) return null;
+  return length(sub(w, s));
+}
 
 /**
  * 主要関節 (鼻/両肩/両手首) の worldLandmarks visibility を診断表示する。
@@ -51,6 +65,7 @@ export class App {
   private hud: Hud;
   private actionDetector: ActionDetector = createActionDetector();
   private actionHud: ActionHud;
+  private recorder = new DebugRecorder();
   private overlayCtx: CanvasRenderingContext2D;
   private overlayWidth = 0;
   private overlayHeight = 0;
@@ -79,6 +94,7 @@ export class App {
       // 既存リソースを必ず破棄してから再初期化 (retry 時の二重リソース防止)
       this.stop();
       window.addEventListener("resize", this.handleResize);
+      window.addEventListener("keydown", this.handleKey);
 
       this.statusUi.setStatus({ kind: "loading", message: "カメラを起動中…" });
       try {
@@ -115,6 +131,7 @@ export class App {
 
   stop(): void {
     window.removeEventListener("resize", this.handleResize);
+    window.removeEventListener("keydown", this.handleKey);
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -136,6 +153,12 @@ export class App {
 
   private handleResize = (): void => {
     this.refreshOverlayCtx();
+  };
+
+  private handleKey = (e: KeyboardEvent): void => {
+    if (e.key === "l" || e.key === "L") {
+      this.recorder.download();
+    }
   };
 
   private applyWebcamAspect(): void {
@@ -177,14 +200,40 @@ export class App {
           now,
         );
         this.actionHud.update(actionResult);
-        this.dom.hud.vis.textContent = formatWorldVisibility(
-          frame.worldLandmarks,
-        );
+
+        const K = KEY_JOINT_INDICES;
+        const w = frame.worldLandmarks;
+        const visAt = (idx: number): number => w[idx]?.visibility ?? 0;
+        this.recorder.record({
+          t: now,
+          action: actionResult.action,
+          cScore: actionResult.charge.score,
+          gScore: actionResult.guard.score,
+          aScore: actionResult.attack.score,
+          cActive: actionResult.charge.active,
+          gActive: actionResult.guard.active,
+          aActive: actionResult.attack.active,
+          attackDetail: actionResult.attack.detail ?? "",
+          extLeft: armExtension(w, K.LEFT_SHOULDER, K.LEFT_WRIST),
+          extRight: armExtension(w, K.RIGHT_SHOULDER, K.RIGHT_WRIST),
+          visNose: visAt(K.NOSE),
+          visLs: visAt(K.LEFT_SHOULDER),
+          visRs: visAt(K.RIGHT_SHOULDER),
+          visLw: visAt(K.LEFT_WRIST),
+          visRw: visAt(K.RIGHT_WRIST),
+        });
+
+        const rec = this.recorder.stats();
+        this.dom.hud.vis.textContent =
+          formatWorldVisibility(frame.worldLandmarks) +
+          ` | rec=${rec.frames} atk=${rec.attackFrames} [L=ログ保存]`;
       } else {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
         const actionResult = this.actionDetector.update(null, now);
         this.actionHud.update(actionResult);
-        this.dom.hud.vis.textContent = "vis: no pose (体がフレーム外)";
+        const rec = this.recorder.stats();
+        this.dom.hud.vis.textContent =
+          `vis: no pose (体がフレーム外) | rec=${rec.frames} atk=${rec.attackFrames} [L=ログ保存]`;
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {

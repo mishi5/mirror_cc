@@ -101,8 +101,9 @@ export function createAttackDetector(
         lastFireMs = timestampMs;
       }
 
+      // 符号を常に付けて幅を固定し、HUD の横揺れ (負値で1桁増える) を防ぐ
       const detail =
-        `spd=${speed.toFixed(2)} dst=${dist.toFixed(3)}` +
+        `spd=${signed(speed, 2)} dst=${signed(dist, 3)}` +
         peakDetailSuffix(timestampMs);
       return { active, score, detail };
     },
@@ -111,4 +112,9 @@ export function createAttackDetector(
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/** 常に符号付きで固定幅にする (HUD の桁ぶれ防止)。 */
+function signed(v: number, digits: number): string {
+  return (v >= 0 ? "+" : "") + v.toFixed(digits);
 }
