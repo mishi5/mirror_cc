@@ -17,6 +17,7 @@ const app = new App({
     detect: getRequired("hud-detect", HTMLElement),
     action: getRequired("hud-action", HTMLElement),
     scores: getRequired("hud-scores", HTMLElement),
+    details: getRequired("hud-details", HTMLElement),
   },
   status: {
     root: getRequired("status", HTMLElement),

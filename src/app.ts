@@ -16,6 +16,7 @@ export interface AppDom {
     detect: HTMLElement;
     action: HTMLElement;
     scores: HTMLElement;
+    details: HTMLElement;
   };
   readonly status: { root: HTMLElement; message: HTMLElement; retry: HTMLButtonElement };
 }
@@ -41,7 +42,7 @@ export class App {
     this.dom = dom;
     this.statusUi = new StatusUi(dom.status.root, dom.status.message, dom.status.retry);
     this.hud = new Hud(dom.hud.root, dom.hud.fps, dom.hud.detect);
-    this.actionHud = new ActionHud(dom.hud.action, dom.hud.scores);
+    this.actionHud = new ActionHud(dom.hud.action, dom.hud.scores, dom.hud.details);
     const ctx = dom.overlay.getContext("2d");
     if (!ctx) {
       throw new Error("2D context not available on overlay canvas");
