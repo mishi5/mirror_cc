@@ -54,6 +54,21 @@ describe("DebugRecorder", () => {
     expect(parsed.frames.map((f) => f.t)).toEqual([2, 3, 4]);
   });
 
+  it("mark で ground-truth ラベルを記録し serialize に含む", () => {
+    const r = new DebugRecorder();
+    r.record(sample({ t: 10 }));
+    r.mark("punch", 12);
+    r.mark("punch", 30);
+    expect(r.stats().marks).toBe(2);
+    const parsed = JSON.parse(r.serialize()) as {
+      marks: { t: number; label: string }[];
+    };
+    expect(parsed.marks).toEqual([
+      { t: 12, label: "punch" },
+      { t: 30, label: "punch" },
+    ]);
+  });
+
   it("serialize は attackFrames と frames を含む JSON を返す", () => {
     const r = new DebugRecorder();
     r.record(sample({ aActive: true, action: "attacking" }));

@@ -2,63 +2,72 @@ import type { Landmark } from "@mediapipe/tasks-vision";
 import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "../constants";
 import type { DetectorParams } from "./params";
 import type { DetectorScore } from "./types";
-import { jointVec } from "./geometry";
+import { jointVec, sub, length } from "./geometry";
 
 export interface AttackDetector {
+  /**
+   * @param chargeGateOpen charge が直近 active だったか (action-detector が判定して渡す)。
+   *   ゲーム的にアタックはチャージ後のみ意味があり、これで idle 動作と判別する。
+   */
   update(
     world: ReadonlyArray<Readonly<Landmark>> | null,
     timestampMs: number,
+    chargeGateOpen: boolean,
   ): DetectorScore;
 }
 
 interface Sample {
-  readonly lz: number;
-  readonly rz: number;
+  /** 肩↔手首の 3D 距離の最大 (左右どちらか伸びている方, m) */
+  readonly ext: number;
   readonly t: number;
 }
 
 /**
- * アタック: 左右どちらかの手首が前方 (z 負方向) へ thrustSpeed (m/s) 以上で移動し、
- * 時間窓内 oldest→newest の前方移動量が minThrustDist 以上。発火後 refractoryMs は再発火しない。
+ * アタック: charge 直後 (chargeGateOpen) の状態から、腕 (肩↔手首距離) が時間窓内で
+ * extBurstDelta 以上増え、かつ窓末端の絶対伸展が extHighAbs 以上 (腕が伸び切り近い)
+ * になった瞬間に発火する。発火後 refractoryMs は再発火しない。
  *
- * 設計: 時間ベースの窓 (windowMs)。低 visibility / 未検出フレームは「サンプルを追加
- * しないだけ」で履歴は消さない。これにより速い突き出し中のモーションブラー (一時的な
- * visibility 低下) で窓が壊れない。古いサンプルは windowMs の時間失効で自然に消えるため、
- * 長時間の不在は自己回復する (frame-count ではなく時間基準なのでフレームレート非依存)。
+ * 単眼 MediaPipe の z は前後動をほぼ捉えないため z 速度は使わない。肩↔手首距離は
+ * dynamic range が大きく (~0.05-0.53m)、charge 保持 (~0.32) からの伸展バーストは
+ * 明確に分離できる。charge gate で idle のランダムな腕動作を除外する。
  *
  * 履歴・lastFireMs はインスタンスに閉じる (将来 Map<poseIndex,...> で2人化)。
  */
-/**
- * spd/dst の直近ピークを保持する時間 (ms)。過渡的なアタックは瞬間値が読めないため、
- * この期間の最大値を HUD に出して実測チューニングに使う。期間経過で 0 に減衰。
- */
-const PEAK_HOLD_MS = 1500;
-
 export function createAttackDetector(
   params: DetectorParams["attack"],
 ): AttackDetector {
   const history: Sample[] = [];
   let lastFireMs: number | null = null;
-  // 直近 PEAK_HOLD_MS の spd/dst ピーク (計器用)
-  let peakSpeed = 0;
-  let peakDist = 0;
+  let peakDelta = 0;
   let peakImprovedMs = 0;
 
-  function peakDetailSuffix(timestampMs: number): string {
+  function armExt(
+    world: ReadonlyArray<Readonly<Landmark>>,
+    shoulderIdx: number,
+    wristIdx: number,
+  ): number | null {
+    const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
+    const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
+    if (!s || !w) return null;
+    return length(sub(w, s));
+  }
+
+  function peakSuffix(timestampMs: number): string {
     if (peakImprovedMs !== 0 && timestampMs - peakImprovedMs > PEAK_HOLD_MS) {
-      peakSpeed = 0;
-      peakDist = 0;
+      peakDelta = 0;
     }
-    return ` pkS=${peakSpeed.toFixed(2)} pkD=${peakDist.toFixed(3)}`;
+    return ` pkD=${peakDelta.toFixed(3)}`;
   }
 
   return {
-    update(world, timestampMs): DetectorScore {
+    update(world, timestampMs, chargeGateOpen): DetectorScore {
+      const gate = chargeGateOpen ? 1 : 0;
       if (world) {
-        const lw = jointVec(world, KEY_JOINT_INDICES.LEFT_WRIST, DEFAULT_VISIBILITY_THRESHOLD);
-        const rw = jointVec(world, KEY_JOINT_INDICES.RIGHT_WRIST, DEFAULT_VISIBILITY_THRESHOLD);
-        if (lw && rw) {
-          history.push({ lz: lw.z, rz: rw.z, t: timestampMs });
+        const eL = armExt(world, KEY_JOINT_INDICES.LEFT_SHOULDER, KEY_JOINT_INDICES.LEFT_WRIST);
+        const eR = armExt(world, KEY_JOINT_INDICES.RIGHT_SHOULDER, KEY_JOINT_INDICES.RIGHT_WRIST);
+        const ext = eL === null ? eR : eR === null ? eL : Math.max(eL, eR);
+        if (ext !== null) {
+          history.push({ ext, t: timestampMs });
         }
       }
       // 時間窓外の古いサンプルを失効 (履歴クリアはしない)
@@ -68,47 +77,51 @@ export function createAttackDetector(
       }
 
       if (history.length < 2) {
-        return { active: false, score: 0, detail: "spd=- dst=-" + peakDetailSuffix(timestampMs) };
+        return {
+          active: false,
+          score: 0,
+          detail: `ext=- d=- gate=${gate}` + peakSuffix(timestampMs),
+        };
       }
       const oldest = history[0]!;
       const newest = history[history.length - 1]!;
       const spanMs = newest.t - oldest.t;
       if (spanMs < params.minWindowMs) {
-        return { active: false, score: 0, detail: "spd=- dst=-" + peakDetailSuffix(timestampMs) };
+        return {
+          active: false,
+          score: 0,
+          detail: `ext=${newest.ext.toFixed(2)} d=- gate=${gate}` + peakSuffix(timestampMs),
+        };
       }
-      const dt = spanMs / 1000;
-      const distL = oldest.lz - newest.lz;
-      const distR = oldest.rz - newest.rz;
-      const dist = Math.max(distL, distR);
-      const speed = dist / dt;
-      const score = clamp01(speed / params.thrustSpeed);
+      const delta = newest.ext - oldest.ext;
+      const score = clamp01(delta / params.extBurstDelta);
 
-      // ピーク更新 (計器用)
-      if (speed > peakSpeed) {
-        peakSpeed = speed;
-        peakImprovedMs = timestampMs;
-      }
-      if (dist > peakDist) {
-        peakDist = dist;
+      if (delta > peakDelta) {
+        peakDelta = delta;
         peakImprovedMs = timestampMs;
       }
 
       const refractory =
         lastFireMs !== null && timestampMs - lastFireMs < params.refractoryMs;
       const active =
-        !refractory && speed >= params.thrustSpeed && dist >= params.minThrustDist;
+        chargeGateOpen &&
+        !refractory &&
+        delta >= params.extBurstDelta &&
+        newest.ext >= params.extHighAbs;
       if (active) {
         lastFireMs = timestampMs;
       }
 
-      // 符号を常に付けて幅を固定し、HUD の横揺れ (負値で1桁増える) を防ぐ
       const detail =
-        `spd=${signed(speed, 2)} dst=${signed(dist, 3)}` +
-        peakDetailSuffix(timestampMs);
+        `ext=${newest.ext.toFixed(2)} d=${signed(delta, 3)} gate=${gate}` +
+        peakSuffix(timestampMs);
       return { active, score, detail };
     },
   };
 }
+
+/** spd/dst のピーク保持時間 (ms)。過渡的アタックは瞬間値が読めないため計器で保持。 */
+const PEAK_HOLD_MS = 1500;
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;

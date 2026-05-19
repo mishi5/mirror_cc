@@ -33,14 +33,20 @@ export interface DetectorParams {
     readonly releaseMs: number;
   };
   readonly attack: {
-    /** 速度推定の時間窓 (ms)。この窓内のサンプルで oldest→newest を評価 */
+    /**
+     * アタック = charge 直後の腕伸展バースト。単眼の z は弱いため、肩↔手首の
+     * 3D 距離 (腕の伸展量) を信号に使う。charge gate で idle 動作と判別する。
+     */
+    /** 伸展バースト評価の時間窓 (ms)。窓内 oldest→newest の ext 変化を見る */
     readonly windowMs: number;
-    /** 評価に必要な最小スパン (ms)。これ未満は速度が不安定なので評価しない */
+    /** 評価に必要な最小スパン (ms) */
     readonly minWindowMs: number;
-    /** 前方速度閾値 (m/s) */
-    readonly thrustSpeed: number;
-    /** 窓内 oldest→newest の前方移動量の最小値 (m) */
-    readonly minThrustDist: number;
+    /** 窓内の伸展増加量 (newest - oldest, m) の最小値 */
+    readonly extBurstDelta: number;
+    /** 窓末端の絶対伸展量 (肩↔手首, m) がこれ以上 (腕が伸び切り近い) */
+    readonly extHighAbs: number;
+    /** charge が active だった時刻からこの時間内のみアタック有効 (ms)。ゲーム的にも正しい */
+    readonly gateMs: number;
     /** 連続発火抑止時間 (ms)。姿勢の再発火抑止であり、ゲームのクールタイムとは別 */
     readonly refractoryMs: number;
   };
@@ -67,10 +73,14 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     releaseMs: 200,
   },
   attack: {
-    windowMs: 250,
+    // 実ログ分析の初期値 (charging の伸展は ~0.32 に密集 p90=0.43、
+    // session 伸展 p95=0.50)。charge から 0.45+ へ 0.12 以上伸展した瞬間を狙う。
+    // ラベル付きログで最終調整する。
+    windowMs: 300,
     minWindowMs: 80,
-    thrustSpeed: 0.35,
-    minThrustDist: 0.07,
+    extBurstDelta: 0.12,
+    extHighAbs: 0.45,
+    gateMs: 1200,
     refractoryMs: 500,
   },
 };

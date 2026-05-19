@@ -34,14 +34,27 @@ describe("createActionDetector", () => {
     expect(r.action).toBe("guarding");
   });
 
-  it("アタック動作中は action=attacking が最優先で観測される", () => {
+  it("charge 後の腕伸展バーストで action=attacking が観測される (charge gate)", () => {
     const d = createActionDetector();
+    // まず charge を活性化して attack gate を開く
+    d.update(chargePose(), 0);
+    d.update(chargePose(), MS.charge.minHoldMs + 50); // charge active
+    const base = MS.charge.minHoldMs + 100;
     let sawAttacking = false;
     for (const f of attackSequence()) {
-      const r = d.update(f.world, f.t);
+      const r = d.update(f.world, base + f.t);
       if (r.action === "attacking") sawAttacking = true;
     }
     expect(sawAttacking).toBe(true);
+  });
+
+  it("charge 無しの腕伸展では attacking にならない (gate 閉)", () => {
+    const d = createActionDetector();
+    let sawAttacking = false;
+    for (const f of attackSequence()) {
+      if (d.update(f.world, f.t).action === "attacking") sawAttacking = true;
+    }
+    expect(sawAttacking).toBe(false);
   });
 
   it("結果に3ディテクタのスコアを同梱する", () => {

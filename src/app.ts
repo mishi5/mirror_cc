@@ -158,6 +158,9 @@ export class App {
   private handleKey = (e: KeyboardEvent): void => {
     if (e.key === "l" || e.key === "L") {
       this.recorder.download();
+    } else if (e.key === "p" || e.key === "P") {
+      // 実際に殴った瞬間の ground-truth ラベル
+      this.recorder.mark("punch", performance.now());
     }
   };
 
@@ -226,14 +229,14 @@ export class App {
         const rec = this.recorder.stats();
         this.dom.hud.vis.textContent =
           formatWorldVisibility(frame.worldLandmarks) +
-          ` | rec=${rec.frames} atk=${rec.attackFrames} [L=ログ保存]`;
+          ` | rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴った瞬間 L=保存]`;
       } else {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
         const actionResult = this.actionDetector.update(null, now);
         this.actionHud.update(actionResult);
         const rec = this.recorder.stats();
         this.dom.hud.vis.textContent =
-          `vis: no pose (体がフレーム外) | rec=${rec.frames} atk=${rec.attackFrames} [L=ログ保存]`;
+          `vis: no pose (体がフレーム外) | rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴った瞬間 L=保存]`;
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {

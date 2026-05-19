@@ -28,8 +28,15 @@ export interface RecorderSample {
   readonly visRw: number;
 }
 
+/** ユーザが実際に動作した瞬間に押す ground-truth ラベル。 */
+export interface RecorderMark {
+  readonly t: number;
+  readonly label: string;
+}
+
 export class DebugRecorder {
   private readonly buf: RecorderSample[] = [];
+  private readonly marks: RecorderMark[] = [];
   private readonly maxSamples: number;
   private attackFrames = 0;
 
@@ -47,8 +54,17 @@ export class DebugRecorder {
     }
   }
 
-  stats(): { frames: number; attackFrames: number } {
-    return { frames: this.buf.length, attackFrames: this.attackFrames };
+  /** ground-truth ラベルを記録する (例: 実際に殴った瞬間)。 */
+  mark(label: string, t: number): void {
+    this.marks.push({ t, label });
+  }
+
+  stats(): { frames: number; attackFrames: number; marks: number } {
+    return {
+      frames: this.buf.length,
+      attackFrames: this.attackFrames,
+      marks: this.marks.length,
+    };
   }
 
   /** 記録を JSON 文字列にして返す (テスト可能な純粋部分)。 */
@@ -58,6 +74,7 @@ export class DebugRecorder {
         generatedAt: new Date().toISOString(),
         attackFrames: this.attackFrames,
         frameCount: this.buf.length,
+        marks: this.marks,
         frames: this.buf,
       },
       null,

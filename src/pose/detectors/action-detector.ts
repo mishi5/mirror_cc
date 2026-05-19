@@ -24,12 +24,22 @@ export function createActionDetector(
   const charge: ChargeDetector = createChargeDetector(params.charge);
   const guard: GuardDetector = createGuardDetector(params.guard);
   const attack: AttackDetector = createAttackDetector(params.attack);
+  // アタックは「charge が直近 active だった」状態でのみ有効 (ゲーム的にも
+  // チャージ後に放つもの)。これで idle のランダムな腕動作と判別する。
+  let lastChargeActiveMs: number | null = null;
 
   return {
     update(world, timestampMs): ActionDetectorResult {
       const c = charge.update(world, timestampMs);
       const g = guard.update(world, timestampMs);
-      const a = attack.update(world, timestampMs);
+
+      if (c.active) lastChargeActiveMs = timestampMs;
+      const chargeGateOpen =
+        c.active ||
+        (lastChargeActiveMs !== null &&
+          timestampMs - lastChargeActiveMs <= params.attack.gateMs);
+
+      const a = attack.update(world, timestampMs, chargeGateOpen);
 
       let action: PoseAction = "idle";
       if (a.active) action = "attacking";

@@ -64,22 +64,45 @@ export function guardPose(): Landmark[] {
 }
 
 /**
- * アタックのフレーム列。手首が時間とともに前方 (z 負方向) へ急速移動する。
- * 各要素は { world, t } で t は ms。
+ * アタックのフレーム列 (伸展バースト)。肩を固定し、手首が肩から離れて
+ * 腕の伸展量 (肩↔手首距離) が ~0.30m → ~0.52m に急増する。各要素は
+ * { world, t } で t は ms (50ms 間隔, 計 6 フレーム / 250ms)。
  */
 export function attackSequence(): ReadonlyArray<{ world: Landmark[]; t: number }> {
   const frames: { world: Landmark[]; t: number }[] = [];
-  const baseZ = -0.05;
   for (let i = 0; i < 6; i++) {
-    const z = baseZ - i * 0.06;
+    const ext = 0.3 + i * 0.044; // 0.300 → 0.520
     frames.push({
-      t: i * 60,
+      t: i * 50,
       world: makeWorld({
-        [K.NOSE]: { x: 0, y: -0.62, z: -0.02 },
         [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
         [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
-        [K.LEFT_WRIST]: { x: 0.15, y: -0.35, z: z },
-        [K.RIGHT_WRIST]: { x: -0.15, y: -0.35, z: z },
+        // 肩から y 方向に ext だけ離す → |wrist - shoulder| = ext
+        [K.LEFT_WRIST]: { x: 0.18, y: -0.5 + ext, z: 0 },
+        [K.RIGHT_WRIST]: { x: -0.18, y: -0.5 + ext, z: 0 },
+      }),
+    });
+  }
+  return frames;
+}
+
+/**
+ * 伸展が変化しない静止フレーム列 (肩↔手首距離 ~0.30m 一定)。
+ * アタック非発火の検証用。
+ */
+export function flatExtensionSequence(): ReadonlyArray<{
+  world: Landmark[];
+  t: number;
+}> {
+  const frames: { world: Landmark[]; t: number }[] = [];
+  for (let i = 0; i < 8; i++) {
+    frames.push({
+      t: i * 50,
+      world: makeWorld({
+        [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+        [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+        [K.LEFT_WRIST]: { x: 0.18, y: -0.2, z: 0 },
+        [K.RIGHT_WRIST]: { x: -0.18, y: -0.2, z: 0 },
       }),
     });
   }
