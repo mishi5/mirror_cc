@@ -71,6 +71,7 @@ export class App {
   private recorder = new DebugRecorder();
   private actionFlash: ActionFlash;
   private prevAttackActive = false;
+  private gateBypass = false;
   private overlayCtx: CanvasRenderingContext2D;
   private overlayWidth = 0;
   private overlayHeight = 0;
@@ -154,6 +155,7 @@ export class App {
     // ActionDetector の内部履歴・クールタイムを破棄し、retry 時に
     // stale state を持ち越さない (stop() の clean-slate 保証に合わせる)。
     this.actionDetector = createActionDetector();
+    this.actionDetector.setGateBypass(this.gateBypass);
     this.actionHud.clear();
     this.actionFlash.clear();
     this.prevAttackActive = false;
@@ -169,6 +171,14 @@ export class App {
     } else if (e.key === "p" || e.key === "P") {
       // 実際に殴った瞬間の ground-truth ラベル
       this.recorder.mark("punch", performance.now());
+    } else if (e.key === "g" || e.key === "G") {
+      // charge ゲート無効化トグル (原因切り分け用)
+      this.gateBypass = !this.gateBypass;
+      this.actionDetector.setGateBypass(this.gateBypass);
+      this.recorder.mark(
+        this.gateBypass ? "gate_bypass_on" : "gate_bypass_off",
+        performance.now(),
+      );
     }
   };
 
@@ -242,7 +252,8 @@ export class App {
         const rec = this.recorder.stats();
         this.dom.hud.vis.textContent =
           formatWorldVisibility(frame.worldLandmarks) +
-          ` | rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴った瞬間 L=保存]`;
+          ` | GATE=${this.gateBypass ? "BYPASS(G)" : "normal(G)"}` +
+          ` rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴 L=保存]`;
       } else {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
         const actionResult = this.actionDetector.update(null, now);
@@ -250,7 +261,8 @@ export class App {
         this.prevAttackActive = actionResult.attack.active;
         const rec = this.recorder.stats();
         this.dom.hud.vis.textContent =
-          `vis: no pose (体がフレーム外) | rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴った瞬間 L=保存]`;
+          `vis: no pose (体がフレーム外) | GATE=${this.gateBypass ? "BYPASS(G)" : "normal(G)"}` +
+          ` rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴 L=保存]`;
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {

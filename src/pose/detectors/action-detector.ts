@@ -10,6 +10,11 @@ export interface ActionDetector {
     world: ReadonlyArray<Readonly<Landmark>> | null,
     timestampMs: number,
   ): ActionDetectorResult;
+  /**
+   * デバッグ用: charge ゲートを無効化し、charge 無しでもアタック検出を評価する。
+   * 「ゲートが原因か / 伸展閾値が原因か」を実機で切り分けるための計器。
+   */
+  setGateBypass(on: boolean): void;
 }
 
 /**
@@ -27,14 +32,20 @@ export function createActionDetector(
   // アタックは「charge が直近 active だった」状態でのみ有効 (ゲーム的にも
   // チャージ後に放つもの)。これで idle のランダムな腕動作と判別する。
   let lastChargeActiveMs: number | null = null;
+  let gateBypass = false;
 
   return {
+    setGateBypass(on: boolean): void {
+      gateBypass = on;
+    },
+
     update(world, timestampMs): ActionDetectorResult {
       const c = charge.update(world, timestampMs);
       const g = guard.update(world, timestampMs);
 
       if (c.active) lastChargeActiveMs = timestampMs;
       const chargeGateOpen =
+        gateBypass ||
         c.active ||
         (lastChargeActiveMs !== null &&
           timestampMs - lastChargeActiveMs <= params.attack.gateMs);

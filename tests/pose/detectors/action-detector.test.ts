@@ -57,6 +57,16 @@ describe("createActionDetector", () => {
     expect(sawAttacking).toBe(false);
   });
 
+  it("setGateBypass(true) で charge 無しでも attacking が観測される (デバッグ計器)", () => {
+    const d = createActionDetector();
+    d.setGateBypass(true);
+    let sawAttacking = false;
+    for (const f of attackSequence()) {
+      if (d.update(f.world, f.t).action === "attacking") sawAttacking = true;
+    }
+    expect(sawAttacking).toBe(true);
+  });
+
   it("結果に3ディテクタのスコアを同梱する", () => {
     const d = createActionDetector();
     const r = d.update(idlePose(), 0);
