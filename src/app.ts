@@ -6,6 +6,27 @@ import { Hud } from "./debug/hud";
 import { StatusUi } from "./ui/status";
 import { createActionDetector, type ActionDetector } from "./pose/detectors/action-detector";
 import { ActionHud } from "./debug/action-hud";
+import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "./pose/constants";
+
+/**
+ * 主要関節 (鼻/両肩/両手首) の worldLandmarks visibility を診断表示する。
+ * ディテクタは worldLandmarks の visibility >= 閾値 でゲートしているため、
+ * これが低い/0 のときは「フレーム外」か「worldLandmarks に visibility が
+ * 乗っていない」かを切り分けられる。閾値未満は ! を付ける。
+ */
+function formatWorldVisibility(
+  world: ReadonlyArray<Readonly<{ visibility?: number }>>,
+): string {
+  const K = KEY_JOINT_INDICES;
+  const f = (idx: number): string => {
+    const v = world[idx]?.visibility ?? 0;
+    return v.toFixed(2) + (v < DEFAULT_VISIBILITY_THRESHOLD ? "!" : "");
+  };
+  return (
+    `vis n=${f(K.NOSE)} Ls=${f(K.LEFT_SHOULDER)} ` +
+    `Rs=${f(K.RIGHT_SHOULDER)} Lw=${f(K.LEFT_WRIST)} Rw=${f(K.RIGHT_WRIST)}`
+  );
+}
 
 export interface AppDom {
   readonly video: HTMLVideoElement;
@@ -17,6 +38,7 @@ export interface AppDom {
     action: HTMLElement;
     scores: HTMLElement;
     details: HTMLElement;
+    vis: HTMLElement;
   };
   readonly status: { root: HTMLElement; message: HTMLElement; retry: HTMLButtonElement };
 }
@@ -155,10 +177,14 @@ export class App {
           now,
         );
         this.actionHud.update(actionResult);
+        this.dom.hud.vis.textContent = formatWorldVisibility(
+          frame.worldLandmarks,
+        );
       } else {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
         const actionResult = this.actionDetector.update(null, now);
         this.actionHud.update(actionResult);
+        this.dom.hud.vis.textContent = "vis: no pose (体がフレーム外)";
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {
