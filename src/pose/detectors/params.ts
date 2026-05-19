@@ -73,13 +73,15 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     releaseMs: 200,
   },
   attack: {
-    // 実ログ分析の初期値 (charging の伸展は ~0.32 に密集 p90=0.43、
-    // session 伸展 p95=0.50)。charge から 0.45+ へ 0.12 以上伸展した瞬間を狙う。
-    // ラベル付きログで最終調整する。
+    // ラベル付きログ (6 punch marks) 分析で確定。検出可能な実パンチ4件は
+    // ext 0.477-0.498、charging の ext は p95=0.436/p99=0.484 に集中。
+    // extHighAbs=0.47 で charging スパイク誤検出を抑えつつ実パンチ4/4を維持
+    // (delta 最小 0.140 のため extBurstDelta=0.12 は据置)。
+    // 短い正面ジャブ (ext<0.45) は単眼で伸展信号が出ず未検出 = 仕様上許容。
     windowMs: 300,
     minWindowMs: 80,
     extBurstDelta: 0.12,
-    extHighAbs: 0.45,
+    extHighAbs: 0.47,
     gateMs: 1200,
     refractoryMs: 500,
   },
