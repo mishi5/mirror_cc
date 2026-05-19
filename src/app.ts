@@ -7,6 +7,7 @@ import { StatusUi } from "./ui/status";
 import { createActionDetector, type ActionDetector } from "./pose/detectors/action-detector";
 import { ActionHud } from "./debug/action-hud";
 import { DebugRecorder } from "./debug/recorder";
+import { ActionFlash } from "./debug/action-flash";
 import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "./pose/constants";
 import { jointVec, sub, length } from "./pose/detectors/geometry";
 
@@ -45,6 +46,7 @@ function formatWorldVisibility(
 export interface AppDom {
   readonly video: HTMLVideoElement;
   readonly overlay: HTMLCanvasElement;
+  readonly flash: HTMLElement;
   readonly hud: {
     root: HTMLElement;
     fps: HTMLElement;
@@ -53,6 +55,7 @@ export interface AppDom {
     scores: HTMLElement;
     details: HTMLElement;
     vis: HTMLElement;
+    lastatk: HTMLElement;
   };
   readonly status: { root: HTMLElement; message: HTMLElement; retry: HTMLButtonElement };
 }
@@ -66,6 +69,8 @@ export class App {
   private actionDetector: ActionDetector = createActionDetector();
   private actionHud: ActionHud;
   private recorder = new DebugRecorder();
+  private actionFlash: ActionFlash;
+  private prevAttackActive = false;
   private overlayCtx: CanvasRenderingContext2D;
   private overlayWidth = 0;
   private overlayHeight = 0;
@@ -80,6 +85,7 @@ export class App {
     this.statusUi = new StatusUi(dom.status.root, dom.status.message, dom.status.retry);
     this.hud = new Hud(dom.hud.root, dom.hud.fps, dom.hud.detect);
     this.actionHud = new ActionHud(dom.hud.action, dom.hud.scores, dom.hud.details);
+    this.actionFlash = new ActionFlash(dom.flash, dom.hud.lastatk);
     const ctx = dom.overlay.getContext("2d");
     if (!ctx) {
       throw new Error("2D context not available on overlay canvas");
@@ -149,6 +155,8 @@ export class App {
     // stale state を持ち越さない (stop() の clean-slate 保証に合わせる)。
     this.actionDetector = createActionDetector();
     this.actionHud.clear();
+    this.actionFlash.clear();
+    this.prevAttackActive = false;
   }
 
   private handleResize = (): void => {
@@ -204,6 +212,11 @@ export class App {
         );
         this.actionHud.update(actionResult);
 
+        if (actionResult.attack.active && !this.prevAttackActive) {
+          this.actionFlash.notifyAttack(now);
+        }
+        this.prevAttackActive = actionResult.attack.active;
+
         const K = KEY_JOINT_INDICES;
         const w = frame.worldLandmarks;
         const visAt = (idx: number): number => w[idx]?.visibility ?? 0;
@@ -234,6 +247,7 @@ export class App {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
         const actionResult = this.actionDetector.update(null, now);
         this.actionHud.update(actionResult);
+        this.prevAttackActive = actionResult.attack.active;
         const rec = this.recorder.stats();
         this.dom.hud.vis.textContent =
           `vis: no pose (体がフレーム外) | rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴った瞬間 L=保存]`;
@@ -256,6 +270,7 @@ export class App {
       }
     }
 
+    this.actionFlash.render(now);
     this.hud.update(now, detectMs);
   };
 

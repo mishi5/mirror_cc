@@ -11,6 +11,7 @@ function getRequired<T extends HTMLElement>(id: string, ctor: new () => T): T {
 const app = new App({
   video: getRequired("webcam", HTMLVideoElement),
   overlay: getRequired("overlay", HTMLCanvasElement),
+  flash: getRequired("flash", HTMLElement),
   hud: {
     root: getRequired("hud", HTMLElement),
     fps: getRequired("hud-fps", HTMLElement),
@@ -19,6 +20,7 @@ const app = new App({
     scores: getRequired("hud-scores", HTMLElement),
     details: getRequired("hud-details", HTMLElement),
     vis: getRequired("hud-vis", HTMLElement),
+    lastatk: getRequired("hud-lastatk", HTMLElement),
   },
   status: {
     root: getRequired("status", HTMLElement),

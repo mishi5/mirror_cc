@@ -100,6 +100,25 @@
       #status-retry[hidden] {
         display: none;
       }
+      #flash {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14vw;
+        font-weight: 900;
+        color: #ff3344;
+        text-shadow:
+          0 0 18px #ff0033,
+          0 0 6px #000;
+        letter-spacing: 0.05em;
+        pointer-events: none;
+        transition: opacity 0.08s linear;
+      }
+      #flash[hidden] {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -108,6 +127,7 @@
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
       </div>
+      <div id="flash" hidden>ATTACK!</div>
       <div id="hud" hidden>
         <span id="hud-fps">FPS: —</span>
         <span id="hud-detect">detect: — ms</span>
@@ -115,6 +135,7 @@
         <span id="hud-scores">C — / G — / A —</span>
         <span id="hud-details">C — | G — | A —</span>
         <span id="hud-vis">vis —</span>
+        <span id="hud-lastatk">LAST ATTACK: none</span>
       </div>
       <div id="status" data-state="loading">
         <p id="status-message">カメラとモデルを準備しています…</p>
