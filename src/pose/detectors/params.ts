@@ -73,16 +73,19 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     releaseMs: 200,
   },
   attack: {
-    // ラベル付きログ (6 punch marks) 分析で確定。検出可能な実パンチ4件は
-    // ext 0.477-0.498、charging の ext は p95=0.436/p99=0.484 に集中。
-    // extHighAbs=0.47 で charging スパイク誤検出を抑えつつ実パンチ4/4を維持
-    // (delta 最小 0.140 のため extBurstDelta=0.12 は据置)。
-    // 短い正面ジャブ (ext<0.45) は単眼で伸展信号が出ず未検出 = 仕様上許容。
+    // 子供向け緩めプリセット (2nd ラベル付きログ分析後):
+    // idle ext は p50=0.411 と高い (子供は腕を動かすため) が、charging との
+    // 差を最低限残して誤発火爆発を防ぐ。
+    //   extHighAbs 0.43 (charging p90=0.417 のすぐ上)
+    //   extBurstDelta 0.08 (charging delta p90~0.07 のすぐ上)
+    //   gateMs 2000ms (一度チャージしたら2秒間打てる)
+    //   refractoryMs 300ms (連打しやすく)
+    // 厳密判定が必要なら params を上書きして調整可能。
     windowMs: 300,
-    minWindowMs: 80,
-    extBurstDelta: 0.12,
-    extHighAbs: 0.47,
-    gateMs: 1200,
-    refractoryMs: 500,
+    minWindowMs: 60,
+    extBurstDelta: 0.08,
+    extHighAbs: 0.43,
+    gateMs: 2000,
+    refractoryMs: 300,
   },
 };
