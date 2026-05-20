@@ -15,28 +15,38 @@ export interface AttackDetector {
   ): DetectorScore;
 }
 
+/** 片腕の 1 フレーム観測値。null は取得不可。 */
+interface ArmReading {
+  /** 肩↔手首 3D 距離 (m) */
+  readonly ext: number | null;
+  /** 肘ストレートネス (0-1, 0.5=90°曲げ, 1.0=180°伸展) */
+  readonly straight: number | null;
+  /** elbow.y - shoulder.y (m, 正値=肘が肩より下)。arms-down 検知用 */
+  readonly elbowDrop: number | null;
+}
 interface Sample {
-  /** 肩↔手首の 3D 距離の最大 (左右どちらか伸びている方, m)。未取得は null */
-  readonly extMax: number | null;
-  /** 肘ストレートネスの最大 (左右どちらか) 0-1。未取得は null */
-  readonly straightMax: number | null;
+  readonly left: ArmReading;
+  readonly right: ArmReading;
   readonly t: number;
 }
 
 /**
- * アタック検出は2系統の信号を OR 論理で組み合わせる:
+ * アタック検出 — 2 系統の信号を OR 論理 + 幾何ゲートで判定する:
  *
  *  (1) 肩↔手首距離バースト (extBurstDelta + extHighAbs)
- *      横/上方向の腕スイングを捉える。前向きパンチ (カメラ方向) は単眼推定で
- *      奥行きが潰れて 3D 距離が変わりにくいため反応しにくい。
+ *      横/上方向の腕スイングを捉える (単眼推定では事実上「画像平面の腕長」)。
  *
  *  (2) 肘ストレートネス バースト (straightBurstDelta + straightHighAbs)
- *      肘の角度が曲げ (90°≈0.5) から伸ばし (180°≈1.0) になる動きを捉える。
- *      MediaPipe の単眼でも肘位置は奥行き依存が小さく、前向きパンチでも反応する。
+ *      肘が曲げ→伸ばしになる動き。前向きパンチでも肘位置は奥行き依存が小さく反応する。
  *
- * いずれかが閾値を超え、かつ chargeGateOpen かつ refractory 外なら active。
- * 履歴は時間窓 (windowMs) でリングバッファ。低 visibility / null フレームは
- * push をスキップするだけで履歴を消さない (モーションブラー耐性)。
+ *  幾何ゲート: 該当腕の elbow が shoulder より maxElbowBelowShoulder 以上下に
+ *  あったら「腕が垂れている」とみなし発火しない (arms-down 偽発火を除去)。
+ *  前向きパンチ・横スイング・上スイングは肘 ≈ 肩高さなので通る。
+ *
+ *  左右の腕を個別に評価し、いずれかが信号+幾何を満たせば active。
+ *  chargeGateOpen かつ refractory 外も必要。
+ *  履歴は時間窓 (windowMs) のリングバッファ、低 visibility / null フレームは
+ *  push をスキップするだけで履歴を消さない (モーションブラー耐性)。
  */
 export function createAttackDetector(
   params: DetectorParams["attack"],
@@ -47,28 +57,36 @@ export function createAttackDetector(
   let peakStraightDelta = 0;
   let peakImprovedMs = 0;
 
-  function armExt(
-    world: ReadonlyArray<Readonly<Landmark>>,
-    shoulderIdx: number,
-    wristIdx: number,
-  ): number | null {
-    const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
-    const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
-    if (!s || !w) return null;
-    return length(sub(w, s));
-  }
-
-  function armStraight(
+  function readArm(
     world: ReadonlyArray<Readonly<Landmark>>,
     shoulderIdx: number,
     elbowIdx: number,
     wristIdx: number,
-  ): number | null {
+  ): ArmReading {
     const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
     const e = jointVec(world, elbowIdx, DEFAULT_VISIBILITY_THRESHOLD);
     const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
-    if (!s || !e || !w) return null;
-    return straightness(s, e, w);
+    const ext = s !== null && w !== null ? length(sub(w, s)) : null;
+    const straight = s !== null && e !== null && w !== null ? straightness(s, e, w) : null;
+    const elbowDrop = s !== null && e !== null ? e.y - s.y : null;
+    return { ext, straight, elbowDrop };
+  }
+
+  function armBurstFires(oldest: ArmReading, newest: ArmReading): boolean {
+    // 幾何ゲート: 肘が肩より大きく下に垂れていたら攻撃姿勢ではない
+    if (newest.elbowDrop === null) return false;
+    if (newest.elbowDrop > params.maxElbowBelowShoulder) return false;
+    const extBurst =
+      oldest.ext !== null &&
+      newest.ext !== null &&
+      newest.ext - oldest.ext >= params.extBurstDelta &&
+      newest.ext >= params.extHighAbs;
+    const straightBurst =
+      oldest.straight !== null &&
+      newest.straight !== null &&
+      newest.straight - oldest.straight >= params.straightBurstDelta &&
+      newest.straight >= params.straightHighAbs;
+    return extBurst || straightBurst;
   }
 
   function peakSuffix(timestampMs: number): string {
@@ -84,29 +102,35 @@ export function createAttackDetector(
     if (b === null) return a;
     return Math.max(a, b);
   }
+  function minOrNull(a: number | null, b: number | null): number | null {
+    if (a === null) return b;
+    if (b === null) return a;
+    return Math.min(a, b);
+  }
 
   return {
     update(world, timestampMs, chargeGateOpen): DetectorScore {
       const gate = chargeGateOpen ? 1 : 0;
       if (world) {
-        const eL = armExt(world, KEY_JOINT_INDICES.LEFT_SHOULDER, KEY_JOINT_INDICES.LEFT_WRIST);
-        const eR = armExt(world, KEY_JOINT_INDICES.RIGHT_SHOULDER, KEY_JOINT_INDICES.RIGHT_WRIST);
-        const sL = armStraight(
+        const left = readArm(
           world,
           KEY_JOINT_INDICES.LEFT_SHOULDER,
           KEY_JOINT_INDICES.LEFT_ELBOW,
           KEY_JOINT_INDICES.LEFT_WRIST,
         );
-        const sR = armStraight(
+        const right = readArm(
           world,
           KEY_JOINT_INDICES.RIGHT_SHOULDER,
           KEY_JOINT_INDICES.RIGHT_ELBOW,
           KEY_JOINT_INDICES.RIGHT_WRIST,
         );
-        const extMax = maxOrNull(eL, eR);
-        const straightMax = maxOrNull(sL, sR);
-        if (extMax !== null || straightMax !== null) {
-          history.push({ extMax, straightMax, t: timestampMs });
+        const anyData =
+          left.ext !== null ||
+          left.straight !== null ||
+          right.ext !== null ||
+          right.straight !== null;
+        if (anyData) {
+          history.push({ left, right, t: timestampMs });
         }
       }
       // 時間窓外の古いサンプルを失効
@@ -119,45 +143,29 @@ export function createAttackDetector(
         return {
           active: false,
           score: 0,
-          detail: `ext=- eΔ=- str=- sΔ=- gate=${gate}` + peakSuffix(timestampMs),
+          detail:
+            `ext=- eΔ=- str=- sΔ=- drop=- gate=${gate}` + peakSuffix(timestampMs),
         };
       }
       const oldest = history[0]!;
       const newest = history[history.length - 1]!;
       const spanMs = newest.t - oldest.t;
-      if (spanMs < params.minWindowMs) {
-        return {
-          active: false,
-          score: 0,
-          detail:
-            `ext=${formatN(newest.extMax, 2)} eΔ=- ` +
-            `str=${formatN(newest.straightMax, 2)} sΔ=- gate=${gate}` +
-            peakSuffix(timestampMs),
-        };
-      }
 
-      // 各信号で「最古→最新の増加量」と「最新の絶対値」を見る
-      const extOk =
-        oldest.extMax !== null &&
-        newest.extMax !== null &&
-        newest.extMax - oldest.extMax >= params.extBurstDelta &&
-        newest.extMax >= params.extHighAbs;
-      const straightOk =
-        oldest.straightMax !== null &&
-        newest.straightMax !== null &&
-        newest.straightMax - oldest.straightMax >= params.straightBurstDelta &&
-        newest.straightMax >= params.straightHighAbs;
-
+      // 表示用集約: 左右の max ext/straight, min drop, max Δ
+      const newestExtMax = maxOrNull(newest.left.ext, newest.right.ext);
+      const newestStraightMax = maxOrNull(newest.left.straight, newest.right.straight);
+      const newestDropMin = minOrNull(newest.left.elbowDrop, newest.right.elbowDrop);
+      const oldestExtMax = maxOrNull(oldest.left.ext, oldest.right.ext);
+      const oldestStraightMax = maxOrNull(oldest.left.straight, oldest.right.straight);
       const extDelta =
-        oldest.extMax !== null && newest.extMax !== null
-          ? newest.extMax - oldest.extMax
+        oldestExtMax !== null && newestExtMax !== null
+          ? newestExtMax - oldestExtMax
           : null;
       const straightDelta =
-        oldest.straightMax !== null && newest.straightMax !== null
-          ? newest.straightMax - oldest.straightMax
+        oldestStraightMax !== null && newestStraightMax !== null
+          ? newestStraightMax - oldestStraightMax
           : null;
-
-      // ピーク更新 (HUD のチューニング用)
+      // ピーク更新
       if (extDelta !== null && extDelta > peakExtDelta) {
         peakExtDelta = extDelta;
         peakImprovedMs = timestampMs;
@@ -167,28 +175,33 @@ export function createAttackDetector(
         peakImprovedMs = timestampMs;
       }
 
-      // スコアは「より強く burst している信号」の正規化値
-      const extScore =
-        extDelta !== null ? clamp01(extDelta / params.extBurstDelta) : 0;
-      const straightScore =
-        straightDelta !== null
-          ? clamp01(straightDelta / params.straightBurstDelta)
-          : 0;
-      const score = Math.max(extScore, straightScore);
+      const baseDetail =
+        `ext=${formatN(newestExtMax, 2)} eΔ=${formatSigned(extDelta, 3)} ` +
+        `str=${formatN(newestStraightMax, 2)} sΔ=${formatSigned(straightDelta, 2)} ` +
+        `drop=${formatSigned(newestDropMin, 2)} gate=${gate}` +
+        peakSuffix(timestampMs);
+
+      if (spanMs < params.minWindowMs) {
+        return { active: false, score: 0, detail: baseDetail };
+      }
 
       const refractory =
         lastFireMs !== null && timestampMs - lastFireMs < params.refractoryMs;
-      const active = chargeGateOpen && !refractory && (extOk || straightOk);
+      // 左右の腕を独立に評価し、いずれかが信号+幾何を満たせば発火
+      const leftFires = armBurstFires(oldest.left, newest.left);
+      const rightFires = armBurstFires(oldest.right, newest.right);
+      const active = chargeGateOpen && !refractory && (leftFires || rightFires);
       if (active) {
         lastFireMs = timestampMs;
       }
+      // スコアは「より強く burst している側」の正規化値 (最大)
+      const extScore =
+        extDelta !== null ? clamp01(extDelta / params.extBurstDelta) : 0;
+      const straightScore =
+        straightDelta !== null ? clamp01(straightDelta / params.straightBurstDelta) : 0;
+      const score = Math.max(extScore, straightScore);
 
-      const detail =
-        `ext=${formatN(newest.extMax, 2)} eΔ=${formatSigned(extDelta, 3)} ` +
-        `str=${formatN(newest.straightMax, 2)} sΔ=${formatSigned(straightDelta, 2)} ` +
-        `gate=${gate}` +
-        peakSuffix(timestampMs);
-      return { active, score, detail };
+      return { active, score, detail: baseDetail };
     },
   };
 }

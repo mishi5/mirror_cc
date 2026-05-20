@@ -5,6 +5,7 @@ import {
   attackSequence,
   flatExtensionSequence,
   forwardPunchSequence,
+  armsDownStraightenSequence,
   makeWorld,
 } from "./fixtures";
 
@@ -82,6 +83,15 @@ describe("createAttackDetector", () => {
       if (d.update(f.world, f.t, true).active) sawActive = true;
     }
     expect(sawActive).toBe(true);
+  });
+
+  it("腕が垂れた状態で肘が伸びても発火しない (arms-down 幾何ゲート)", () => {
+    const d = createAttackDetector(P);
+    let sawActive = false;
+    for (const f of armsDownStraightenSequence()) {
+      if (d.update(f.world, f.t, true).active) sawActive = true;
+    }
+    expect(sawActive).toBe(false);
   });
 
   it("インスタンスごとに履歴が独立", () => {

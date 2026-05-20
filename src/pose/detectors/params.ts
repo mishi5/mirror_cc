@@ -49,6 +49,11 @@ export interface DetectorParams {
     readonly straightBurstDelta: number;
     /** 肘ストレートネスの窓末端絶対値 (0-1)。これ以上で「腕がほぼ伸びた」 */
     readonly straightHighAbs: number;
+    /**
+     * 肘が肩より何メートル下までなら攻撃姿勢として認めるか (m, y正=下)。
+     * これを越えると「腕が下に垂れている」とみなし発火しない (arms-down 除外)。
+     */
+    readonly maxElbowBelowShoulder: number;
     /** charge が active だった時刻からこの時間内のみアタック有効 (ms)。ゲーム的にも正しい */
     readonly gateMs: number;
     /** 連続発火抑止時間 (ms)。姿勢の再発火抑止であり、ゲームのクールタイムとは別 */
@@ -90,10 +95,14 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     extBurstDelta: 0.08,
     extHighAbs: 0.43,
     // 肘ストレートネスは前向きパンチでも反応する補助信号 (OR 論理):
-    // charge 姿勢で肘 ~90°(straightness 0.5) → パンチで ~180°(1.0) になる。
-    // burst 0.15 (0.5 → 0.65 以上の急変)、high 0.80 (実際に伸びきり気味)。
+    // charge 姿勢で肘 ~90°(straightness 0.5) → パンチで伸ばす。前向きパンチは
+    // MediaPipe 上で奥行きが潰れ完全伸展に見えにくいため high=0.65 と緩めに。
+    // arms-down 偽発火は別途 maxElbowBelowShoulder で除外する。
     straightBurstDelta: 0.15,
-    straightHighAbs: 0.8,
+    straightHighAbs: 0.65,
+    // 肘が肩より 0.20m 以上下に来たら攻撃姿勢ではない (腕が垂れている)。
+    // 前向きパンチは肘 ≈ 肩の高さ、横/上スイングも肘は肩近傍に上がる。
+    maxElbowBelowShoulder: 0.2,
     gateMs: 2000,
     refractoryMs: 300,
   },

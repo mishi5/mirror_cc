@@ -64,9 +64,10 @@ export function guardPose(): Landmark[] {
 }
 
 /**
- * アタックのフレーム列 (伸展バースト)。肩を固定し、手首が肩から離れて
- * 腕の伸展量 (肩↔手首距離) が ~0.30m → ~0.52m に急増する。各要素は
- * { world, t } で t は ms (50ms 間隔, 計 6 フレーム / 250ms)。
+ * アタックのフレーム列 (横方向の伸展バースト)。肩を固定し、手首が肩から
+ * x 方向 (外側) に離れて伸展量 (肩↔手首距離) が ~0.30 → ~0.52m に急増。
+ * 肘は肩と手首の中点に置き、肘の高さは肩と同じ (elbowDrop=0 で幾何ゲート OK)。
+ * 50ms 間隔, 計 6 フレーム / 250ms。
  */
 export function attackSequence(): ReadonlyArray<{ world: Landmark[]; t: number }> {
   const frames: { world: Landmark[]; t: number }[] = [];
@@ -77,9 +78,11 @@ export function attackSequence(): ReadonlyArray<{ world: Landmark[]; t: number }
       world: makeWorld({
         [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
         [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
-        // 肩から y 方向に ext だけ離す → |wrist - shoulder| = ext
-        [K.LEFT_WRIST]: { x: 0.18, y: -0.5 + ext, z: 0 },
-        [K.RIGHT_WRIST]: { x: -0.18, y: -0.5 + ext, z: 0 },
+        // 肩から x 方向 (外側) に ext だけ離す。肘は中点 (肩高さ)。
+        [K.LEFT_ELBOW]: { x: 0.18 + ext / 2, y: -0.5, z: 0 },
+        [K.RIGHT_ELBOW]: { x: -0.18 - ext / 2, y: -0.5, z: 0 },
+        [K.LEFT_WRIST]: { x: 0.18 + ext, y: -0.5, z: 0 },
+        [K.RIGHT_WRIST]: { x: -0.18 - ext, y: -0.5, z: 0 },
       }),
     });
   }
@@ -124,8 +127,8 @@ export function forwardPunchSequence(): ReadonlyArray<{
 }
 
 /**
- * 伸展が変化しない静止フレーム列 (肩↔手首距離 ~0.30m 一定)。
- * アタック非発火の検証用。
+ * 伸展も角度も変化しない静止フレーム列 (一定の構え)。
+ * 幾何ゲートは満たすが信号が動かない → 非発火の検証用。
  */
 export function flatExtensionSequence(): ReadonlyArray<{
   world: Landmark[];
@@ -138,8 +141,46 @@ export function flatExtensionSequence(): ReadonlyArray<{
       world: makeWorld({
         [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
         [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
-        [K.LEFT_WRIST]: { x: 0.18, y: -0.2, z: 0 },
-        [K.RIGHT_WRIST]: { x: -0.18, y: -0.2, z: 0 },
+        // 肘を肩高さに置き幾何ゲート OK にする (信号が動かないことだけで弾きたい)
+        [K.LEFT_ELBOW]: { x: 0.33, y: -0.5, z: 0 },
+        [K.RIGHT_ELBOW]: { x: -0.33, y: -0.5, z: 0 },
+        [K.LEFT_WRIST]: { x: 0.48, y: -0.5, z: 0 },
+        [K.RIGHT_WRIST]: { x: -0.48, y: -0.5, z: 0 },
+      }),
+    });
+  }
+  return frames;
+}
+
+/**
+ * 腕が垂れた状態でストレートネスが上がる False positive 検証列。
+ * 肘は肩より大きく下 (drop ≈ 0.30) で straightness 0.5 → 1.0 に変化。
+ * 新しい幾何ゲート (maxElbowBelowShoulder) で発火しないことを検証する。
+ */
+export function armsDownStraightenSequence(): ReadonlyArray<{
+  world: Landmark[];
+  t: number;
+}> {
+  const frames: { world: Landmark[]; t: number }[] = [];
+  for (let i = 0; i < 6; i++) {
+    const thetaDeg = 90 - i * 18; // 90°→0°
+    const th = (thetaDeg * Math.PI) / 180;
+    const fc = Math.cos(th);
+    const fs = Math.sin(th);
+    // 肘を肩より 0.30m 下に固定 (腕が垂れている)
+    const lElbow = { x: 0.18, y: -0.2, z: 0 };
+    const lWrist = { x: 0.18 + 0.25 * fs, y: -0.2 + 0.25 * fc, z: 0 };
+    const rElbow = { x: -0.18, y: -0.2, z: 0 };
+    const rWrist = { x: -0.18 - 0.25 * fs, y: -0.2 + 0.25 * fc, z: 0 };
+    frames.push({
+      t: i * 50,
+      world: makeWorld({
+        [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+        [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+        [K.LEFT_ELBOW]: lElbow,
+        [K.RIGHT_ELBOW]: rElbow,
+        [K.LEFT_WRIST]: lWrist,
+        [K.RIGHT_WRIST]: rWrist,
       }),
     });
   }
