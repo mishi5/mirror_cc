@@ -45,6 +45,10 @@ export interface DetectorParams {
     readonly extBurstDelta: number;
     /** 窓末端の絶対伸展量 (肩↔手首, m) がこれ以上 (腕が伸び切り近い) */
     readonly extHighAbs: number;
+    /** 肘ストレートネス (0-1) の窓内増加量。前向きパンチでも反応する別信号 */
+    readonly straightBurstDelta: number;
+    /** 肘ストレートネスの窓末端絶対値 (0-1)。これ以上で「腕がほぼ伸びた」 */
+    readonly straightHighAbs: number;
     /** charge が active だった時刻からこの時間内のみアタック有効 (ms)。ゲーム的にも正しい */
     readonly gateMs: number;
     /** 連続発火抑止時間 (ms)。姿勢の再発火抑止であり、ゲームのクールタイムとは別 */
@@ -85,6 +89,11 @@ export const DEFAULT_DETECTOR_PARAMS: DetectorParams = {
     minWindowMs: 60,
     extBurstDelta: 0.08,
     extHighAbs: 0.43,
+    // 肘ストレートネスは前向きパンチでも反応する補助信号 (OR 論理):
+    // charge 姿勢で肘 ~90°(straightness 0.5) → パンチで ~180°(1.0) になる。
+    // burst 0.15 (0.5 → 0.65 以上の急変)、high 0.80 (実際に伸びきり気味)。
+    straightBurstDelta: 0.15,
+    straightHighAbs: 0.8,
     gateMs: 2000,
     refractoryMs: 300,
   },

@@ -87,6 +87,43 @@ export function attackSequence(): ReadonlyArray<{ world: Landmark[]; t: number }
 }
 
 /**
+ * 前向きパンチのフレーム列 (肘が曲げ→伸びへ)。肩・肘・手首の3点で肘角度を
+ * 90°(straightness 0.5) → 180°(straightness 1.0) に動かす。前向きでも
+ * 肘角度信号で反応することを検証する用 (worldLandmarks の z は使わない)。
+ */
+export function forwardPunchSequence(): ReadonlyArray<{
+  world: Landmark[];
+  t: number;
+}> {
+  const frames: { world: Landmark[]; t: number }[] = [];
+  for (let i = 0; i < 6; i++) {
+    // i=0 で θ=90° (bent), i=5 で θ=0° (straight)
+    const thetaDeg = 90 - i * 18;
+    const th = (thetaDeg * Math.PI) / 180;
+    const fc = Math.cos(th);
+    const fs = Math.sin(th);
+    // 左腕: shoulder=(0.18,-0.5,0), elbow=(0.43,-0.5,0) (上腕は +x 方向)
+    // 前腕: cos(θ)*+x_direction + sin(θ)*-y_direction
+    const lElbow = { x: 0.43, y: -0.5, z: 0 };
+    const lWrist = { x: 0.43 + 0.25 * fc, y: -0.5 - 0.25 * fs, z: 0 };
+    const rElbow = { x: -0.43, y: -0.5, z: 0 };
+    const rWrist = { x: -0.43 - 0.25 * fc, y: -0.5 - 0.25 * fs, z: 0 };
+    frames.push({
+      t: i * 50,
+      world: makeWorld({
+        [K.LEFT_SHOULDER]: { x: 0.18, y: -0.5, z: 0 },
+        [K.RIGHT_SHOULDER]: { x: -0.18, y: -0.5, z: 0 },
+        [K.LEFT_ELBOW]: lElbow,
+        [K.RIGHT_ELBOW]: rElbow,
+        [K.LEFT_WRIST]: lWrist,
+        [K.RIGHT_WRIST]: rWrist,
+      }),
+    });
+  }
+  return frames;
+}
+
+/**
  * 伸展が変化しない静止フレーム列 (肩↔手首距離 ~0.30m 一定)。
  * アタック非発火の検証用。
  */

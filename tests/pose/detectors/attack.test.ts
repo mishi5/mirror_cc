@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { createAttackDetector } from "../../../src/pose/detectors/attack";
 import { DEFAULT_DETECTOR_PARAMS } from "../../../src/pose/detectors/params";
-import { attackSequence, flatExtensionSequence, makeWorld } from "./fixtures";
+import {
+  attackSequence,
+  flatExtensionSequence,
+  forwardPunchSequence,
+  makeWorld,
+} from "./fixtures";
 
 const P = DEFAULT_DETECTOR_PARAMS.attack;
 
@@ -61,11 +66,22 @@ describe("createAttackDetector", () => {
     expect(sawActive).toBe(true);
   });
 
-  it("detail に ext / d / gate / pkD を出す", () => {
+  it("detail に ext/eΔ/str/sΔ/gate/peak を出す", () => {
     const d = createAttackDetector(P);
     let last = d.update(makeWorld({}), 0, true);
     for (const f of attackSequence()) last = d.update(f.world, f.t, true);
-    expect(last.detail).toMatch(/ext=.* d=.* gate=[01] pkD=[0-9.]+/);
+    expect(last.detail).toMatch(
+      /ext=.* eΔ=.* str=.* sΔ=.* gate=[01] pkE=[0-9.]+ pkS=[0-9.]+/,
+    );
+  });
+
+  it("前向きパンチ (肘ストレートネス バースト) でも発火する", () => {
+    const d = createAttackDetector(P);
+    let sawActive = false;
+    for (const f of forwardPunchSequence()) {
+      if (d.update(f.world, f.t, true).active) sawActive = true;
+    }
+    expect(sawActive).toBe(true);
   });
 
   it("インスタンスごとに履歴が独立", () => {

@@ -9,9 +9,9 @@ import { ActionHud } from "./debug/action-hud";
 import { DebugRecorder } from "./debug/recorder";
 import { ActionFlash } from "./debug/action-flash";
 import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "./pose/constants";
-import { jointVec, sub, length } from "./pose/detectors/geometry";
+import { jointVec, sub, length, straightness } from "./pose/detectors/geometry";
 
-/** 肩↔手首の 3D 距離 (腕の伸展量, m)。取得不可なら null。新アタック信号の候補。 */
+/** 肩↔手首の 3D 距離 (腕の伸展量, m)。取得不可なら null。 */
 function armExtension(
   world: ReadonlyArray<Readonly<{ x: number; y: number; z: number; visibility?: number }>>,
   shoulderIdx: number,
@@ -21,6 +21,20 @@ function armExtension(
   const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
   if (!s || !w) return null;
   return length(sub(w, s));
+}
+
+/** 肘ストレートネス (肩-肘-手首の角度, 0-1)。取得不可なら null。 */
+function armStraightness(
+  world: ReadonlyArray<Readonly<{ x: number; y: number; z: number; visibility?: number }>>,
+  shoulderIdx: number,
+  elbowIdx: number,
+  wristIdx: number,
+): number | null {
+  const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  const e = jointVec(world, elbowIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  if (!s || !e || !w) return null;
+  return straightness(s, e, w);
 }
 
 /**
@@ -242,9 +256,13 @@ export class App {
           attackDetail: actionResult.attack.detail ?? "",
           extLeft: armExtension(w, K.LEFT_SHOULDER, K.LEFT_WRIST),
           extRight: armExtension(w, K.RIGHT_SHOULDER, K.RIGHT_WRIST),
+          straightLeft: armStraightness(w, K.LEFT_SHOULDER, K.LEFT_ELBOW, K.LEFT_WRIST),
+          straightRight: armStraightness(w, K.RIGHT_SHOULDER, K.RIGHT_ELBOW, K.RIGHT_WRIST),
           visNose: visAt(K.NOSE),
           visLs: visAt(K.LEFT_SHOULDER),
           visRs: visAt(K.RIGHT_SHOULDER),
+          visLe: visAt(K.LEFT_ELBOW),
+          visRe: visAt(K.RIGHT_ELBOW),
           visLw: visAt(K.LEFT_WRIST),
           visRw: visAt(K.RIGHT_WRIST),
         });

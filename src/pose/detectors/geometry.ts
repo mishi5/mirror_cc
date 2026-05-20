@@ -40,3 +40,25 @@ export function jointVec(
   if ((lm.visibility ?? 0) < minVisibility) return null;
   return { x: lm.x, y: lm.y, z: lm.z };
 }
+
+/**
+ * 3点のなす角の straightness を返す。中央点 (elbow) を頂点として、両端 (shoulder/wrist)
+ * へのベクトル間の角度。0=完全に折り畳まれた状態 (同方向, 物理的にはほぼ無い)、
+ * 0.5=直角 (典型的な曲げ姿勢)、1=180°完全伸展。
+ *
+ * MediaPipe 単眼の世界座標では「肩-手首距離」は前向き動作で潰れる (奥行き z が
+ * 強く減衰) が、肘の位置自体は奥行き依存が小さく、肘角度は punch 方向に依らず
+ * "曲げ→伸ばし" を捉えられる。前向きパンチでも横/上スイングでも反応する。
+ *
+ * 長さ 0 のベクトルが含まれる場合は null。
+ */
+export function straightness(shoulder: Vec3, elbow: Vec3, wrist: Vec3): number | null {
+  const se = sub(shoulder, elbow);
+  const we = sub(wrist, elbow);
+  const ls = length(se);
+  const lw = length(we);
+  if (ls === 0 || lw === 0) return null;
+  const cos = dot(se, we) / (ls * lw);
+  const clamped = cos < -1 ? -1 : cos > 1 ? 1 : cos;
+  return (1 - clamped) / 2;
+}

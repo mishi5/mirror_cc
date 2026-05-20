@@ -17,13 +17,18 @@ export interface RecorderSample {
   readonly aActive: boolean;
   /** attack ディテクタの detail 文字列 (spd/dst/pk) */
   readonly attackDetail: string;
-  /** 肩↔手首の 3D 距離 (腕の伸展量, m)。新しいアタック信号の候補。取得不可なら null */
+  /** 肩↔手首の 3D 距離 (腕の伸展量, m)。取得不可なら null */
   readonly extLeft: number | null;
   readonly extRight: number | null;
+  /** 肘ストレートネス 0-1 (肩-肘-手首の角度: 0.5=90°曲げ, 1.0=180°伸展)。取得不可なら null */
+  readonly straightLeft: number | null;
+  readonly straightRight: number | null;
   /** 主要関節の worldLandmarks visibility */
   readonly visNose: number;
   readonly visLs: number;
   readonly visRs: number;
+  readonly visLe: number;
+  readonly visRe: number;
   readonly visLw: number;
   readonly visRw: number;
 }

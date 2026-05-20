@@ -6,6 +6,7 @@ import {
   midpoint,
   dot,
   jointVec,
+  straightness,
 } from "../../../src/pose/detectors/geometry";
 
 describe("toVec3", () => {
@@ -77,5 +78,44 @@ describe("jointVec", () => {
   });
   it("visibility が閾値ちょうどなら返す (>= 判定)", () => {
     expect(jointVec(world, 2, 0.8)).toEqual({ x: 2, y: 2, z: 2 });
+  });
+});
+
+describe("straightness", () => {
+  it("直角 (90°) は 0.5", () => {
+    // shoulder=(1,0,0), elbow=(0,0,0), wrist=(0,1,0) → SE と WE が直交
+    const s = { x: 1, y: 0, z: 0 };
+    const e = { x: 0, y: 0, z: 0 };
+    const w = { x: 0, y: 1, z: 0 };
+    expect(straightness(s, e, w)).toBeCloseTo(0.5, 6);
+  });
+
+  it("完全に伸びた 180° は 1.0", () => {
+    // shoulder=(1,0,0), elbow=(0,0,0), wrist=(-1,0,0) → SE と WE が反対方向
+    const s = { x: 1, y: 0, z: 0 };
+    const e = { x: 0, y: 0, z: 0 };
+    const w = { x: -1, y: 0, z: 0 };
+    expect(straightness(s, e, w)).toBeCloseTo(1.0, 6);
+  });
+
+  it("折り畳まれた 0° (同方向) は 0", () => {
+    const s = { x: 1, y: 0, z: 0 };
+    const e = { x: 0, y: 0, z: 0 };
+    const w = { x: 1, y: 0, z: 0 };
+    expect(straightness(s, e, w)).toBeCloseTo(0.0, 6);
+  });
+
+  it("中間角度 120° は ~0.75 (1-cos120°)/2 = 0.75", () => {
+    // 120° = -0.5 cos → (1-(-0.5))/2 = 0.75
+    const s = { x: 1, y: 0, z: 0 };
+    const e = { x: 0, y: 0, z: 0 };
+    // 120°: w direction (cos120°, sin120°) = (-0.5, sqrt(3)/2)
+    const w = { x: -0.5, y: Math.sqrt(3) / 2, z: 0 };
+    expect(straightness(s, e, w)).toBeCloseTo(0.75, 6);
+  });
+
+  it("ゼロ長ベクトル (重複点) は null", () => {
+    const p = { x: 0, y: 0, z: 0 };
+    expect(straightness(p, p, { x: 1, y: 0, z: 0 })).toBeNull();
   });
 });
