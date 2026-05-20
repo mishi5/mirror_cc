@@ -4,11 +4,73 @@ import { createPoseLandmarker, detectPose } from "./pose/landmarker";
 import { drawOverlay, resizeOverlayCanvas } from "./debug/overlay";
 import { Hud } from "./debug/hud";
 import { StatusUi } from "./ui/status";
+import { createActionDetector, type ActionDetector } from "./pose/detectors/action-detector";
+import { ActionHud } from "./debug/action-hud";
+import { DebugRecorder } from "./debug/recorder";
+import { ActionFlash } from "./debug/action-flash";
+import { KEY_JOINT_INDICES, DEFAULT_VISIBILITY_THRESHOLD } from "./pose/constants";
+import { jointVec, sub, length, straightness } from "./pose/detectors/geometry";
+
+/** 肩↔手首の 3D 距離 (腕の伸展量, m)。取得不可なら null。 */
+function armExtension(
+  world: ReadonlyArray<Readonly<{ x: number; y: number; z: number; visibility?: number }>>,
+  shoulderIdx: number,
+  wristIdx: number,
+): number | null {
+  const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  if (!s || !w) return null;
+  return length(sub(w, s));
+}
+
+/** 肘ストレートネス (肩-肘-手首の角度, 0-1)。取得不可なら null。 */
+function armStraightness(
+  world: ReadonlyArray<Readonly<{ x: number; y: number; z: number; visibility?: number }>>,
+  shoulderIdx: number,
+  elbowIdx: number,
+  wristIdx: number,
+): number | null {
+  const s = jointVec(world, shoulderIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  const e = jointVec(world, elbowIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  const w = jointVec(world, wristIdx, DEFAULT_VISIBILITY_THRESHOLD);
+  if (!s || !e || !w) return null;
+  return straightness(s, e, w);
+}
+
+/**
+ * 主要関節 (鼻/両肩/両手首) の worldLandmarks visibility を診断表示する。
+ * ディテクタは worldLandmarks の visibility >= 閾値 でゲートしているため、
+ * これが低い/0 のときは「フレーム外」か「worldLandmarks に visibility が
+ * 乗っていない」かを切り分けられる。閾値未満は ! を付ける。
+ */
+function formatWorldVisibility(
+  world: ReadonlyArray<Readonly<{ visibility?: number }>>,
+): string {
+  const K = KEY_JOINT_INDICES;
+  const f = (idx: number): string => {
+    const v = world[idx]?.visibility ?? 0;
+    return v.toFixed(2) + (v < DEFAULT_VISIBILITY_THRESHOLD ? "!" : "");
+  };
+  return (
+    `vis n=${f(K.NOSE)} Ls=${f(K.LEFT_SHOULDER)} ` +
+    `Rs=${f(K.RIGHT_SHOULDER)} Lw=${f(K.LEFT_WRIST)} Rw=${f(K.RIGHT_WRIST)}`
+  );
+}
 
 export interface AppDom {
   readonly video: HTMLVideoElement;
   readonly overlay: HTMLCanvasElement;
-  readonly hud: { root: HTMLElement; fps: HTMLElement; detect: HTMLElement };
+  readonly flash: HTMLElement;
+  readonly hud: {
+    root: HTMLElement;
+    fps: HTMLElement;
+    detect: HTMLElement;
+    action: HTMLElement;
+    scores: HTMLElement;
+    details: HTMLElement;
+    vis: HTMLElement;
+    lastatk: HTMLElement;
+  };
   readonly status: { root: HTMLElement; message: HTMLElement; retry: HTMLButtonElement };
 }
 
@@ -18,6 +80,12 @@ export class App {
   private dom: AppDom;
   private statusUi: StatusUi;
   private hud: Hud;
+  private actionDetector: ActionDetector = createActionDetector();
+  private actionHud: ActionHud;
+  private recorder = new DebugRecorder();
+  private actionFlash: ActionFlash;
+  private prevAttackActive = false;
+  private gateBypass = false;
   private overlayCtx: CanvasRenderingContext2D;
   private overlayWidth = 0;
   private overlayHeight = 0;
@@ -31,6 +99,8 @@ export class App {
     this.dom = dom;
     this.statusUi = new StatusUi(dom.status.root, dom.status.message, dom.status.retry);
     this.hud = new Hud(dom.hud.root, dom.hud.fps, dom.hud.detect);
+    this.actionHud = new ActionHud(dom.hud.action, dom.hud.scores, dom.hud.details);
+    this.actionFlash = new ActionFlash(dom.flash, dom.hud.lastatk);
     const ctx = dom.overlay.getContext("2d");
     if (!ctx) {
       throw new Error("2D context not available on overlay canvas");
@@ -45,6 +115,7 @@ export class App {
       // 既存リソースを必ず破棄してから再初期化 (retry 時の二重リソース防止)
       this.stop();
       window.addEventListener("resize", this.handleResize);
+      window.addEventListener("keydown", this.handleKey);
 
       this.statusUi.setStatus({ kind: "loading", message: "カメラを起動中…" });
       try {
@@ -81,6 +152,7 @@ export class App {
 
   stop(): void {
     window.removeEventListener("resize", this.handleResize);
+    window.removeEventListener("keydown", this.handleKey);
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -94,10 +166,34 @@ export class App {
       this.landmarker = null;
     }
     this.hud.hide();
+    // ActionDetector の内部履歴・クールタイムを破棄し、retry 時に
+    // stale state を持ち越さない (stop() の clean-slate 保証に合わせる)。
+    this.actionDetector = createActionDetector();
+    this.actionDetector.setGateBypass(this.gateBypass);
+    this.actionHud.clear();
+    this.actionFlash.clear();
+    this.prevAttackActive = false;
   }
 
   private handleResize = (): void => {
     this.refreshOverlayCtx();
+  };
+
+  private handleKey = (e: KeyboardEvent): void => {
+    if (e.key === "l" || e.key === "L") {
+      this.recorder.download();
+    } else if (e.key === "p" || e.key === "P") {
+      // 実際に殴った瞬間の ground-truth ラベル
+      this.recorder.mark("punch", performance.now());
+    } else if (e.key === "g" || e.key === "G") {
+      // charge ゲート無効化トグル (原因切り分け用)
+      this.gateBypass = !this.gateBypass;
+      this.actionDetector.setGateBypass(this.gateBypass);
+      this.recorder.mark(
+        this.gateBypass ? "gate_bypass_on" : "gate_bypass_off",
+        performance.now(),
+      );
+    }
   };
 
   private applyWebcamAspect(): void {
@@ -134,8 +230,57 @@ export class App {
         // mirror 反転はそこで完結する。raw landmark を canvas 座標で描画する。
         drawOverlay(this.overlayCtx, frame.landmarks, this.overlayWidth, this.overlayHeight);
         detectMs = frame.detectTimeMs;
+        const actionResult = this.actionDetector.update(
+          frame.worldLandmarks,
+          now,
+        );
+        this.actionHud.update(actionResult);
+
+        if (actionResult.attack.active && !this.prevAttackActive) {
+          this.actionFlash.notifyAttack(now);
+        }
+        this.prevAttackActive = actionResult.attack.active;
+
+        const K = KEY_JOINT_INDICES;
+        const w = frame.worldLandmarks;
+        const visAt = (idx: number): number => w[idx]?.visibility ?? 0;
+        this.recorder.record({
+          t: now,
+          action: actionResult.action,
+          cScore: actionResult.charge.score,
+          gScore: actionResult.guard.score,
+          aScore: actionResult.attack.score,
+          cActive: actionResult.charge.active,
+          gActive: actionResult.guard.active,
+          aActive: actionResult.attack.active,
+          attackDetail: actionResult.attack.detail ?? "",
+          extLeft: armExtension(w, K.LEFT_SHOULDER, K.LEFT_WRIST),
+          extRight: armExtension(w, K.RIGHT_SHOULDER, K.RIGHT_WRIST),
+          straightLeft: armStraightness(w, K.LEFT_SHOULDER, K.LEFT_ELBOW, K.LEFT_WRIST),
+          straightRight: armStraightness(w, K.RIGHT_SHOULDER, K.RIGHT_ELBOW, K.RIGHT_WRIST),
+          visNose: visAt(K.NOSE),
+          visLs: visAt(K.LEFT_SHOULDER),
+          visRs: visAt(K.RIGHT_SHOULDER),
+          visLe: visAt(K.LEFT_ELBOW),
+          visRe: visAt(K.RIGHT_ELBOW),
+          visLw: visAt(K.LEFT_WRIST),
+          visRw: visAt(K.RIGHT_WRIST),
+        });
+
+        const rec = this.recorder.stats();
+        this.dom.hud.vis.textContent =
+          formatWorldVisibility(frame.worldLandmarks) +
+          ` | GATE=${this.gateBypass ? "BYPASS(G)" : "normal(G)"}` +
+          ` rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴 L=保存]`;
       } else {
         this.overlayCtx.clearRect(0, 0, this.overlayWidth, this.overlayHeight);
+        const actionResult = this.actionDetector.update(null, now);
+        this.actionHud.update(actionResult);
+        this.prevAttackActive = actionResult.attack.active;
+        const rec = this.recorder.stats();
+        this.dom.hud.vis.textContent =
+          `vis: no pose (体がフレーム外) | GATE=${this.gateBypass ? "BYPASS(G)" : "normal(G)"}` +
+          ` rec=${rec.frames} atk=${rec.attackFrames} mk=${rec.marks} [P=殴 L=保存]`;
       }
       this.consecutiveDetectErrors = 0;
     } catch (err) {
@@ -155,6 +300,7 @@ export class App {
       }
     }
 
+    this.actionFlash.render(now);
     this.hud.update(now, detectMs);
   };
 

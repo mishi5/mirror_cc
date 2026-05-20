@@ -47,18 +47,27 @@
       }
       #hud {
         position: absolute;
-        right: 12px;
+        /* 左寄せ固定: 数値の桁数が変わっても左端が動かず読みやすい */
+        left: 12px;
         bottom: 12px;
         padding: 8px 12px;
         background: rgba(0, 0, 0, 0.5);
         border-radius: 6px;
-        font-size: 13px;
-        line-height: 1.4;
+        font-size: 18px;
+        font-weight: 600;
+        color: #fff;
+        text-shadow: 0 0 3px #000;
+        line-height: 1.5;
         display: flex;
         flex-direction: column;
+        align-items: flex-start;
         gap: 2px;
         pointer-events: none;
+        /* 等幅 + tabular-nums で桁ぶれによる横揺れを抑制 */
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         font-variant-numeric: tabular-nums;
+        white-space: pre;
+        min-width: 360px;
       }
       #status {
         position: absolute;
@@ -91,6 +100,25 @@
       #status-retry[hidden] {
         display: none;
       }
+      #flash {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14vw;
+        font-weight: 900;
+        color: #ff3344;
+        text-shadow:
+          0 0 18px #ff0033,
+          0 0 6px #000;
+        letter-spacing: 0.05em;
+        pointer-events: none;
+        transition: opacity 0.08s linear;
+      }
+      #flash[hidden] {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -99,9 +127,15 @@
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
       </div>
+      <div id="flash" hidden>ATTACK!</div>
       <div id="hud" hidden>
         <span id="hud-fps">FPS: —</span>
         <span id="hud-detect">detect: — ms</span>
+        <span id="hud-action">action: —</span>
+        <span id="hud-scores">C — / G — / A —</span>
+        <span id="hud-details">C — | G — | A —</span>
+        <span id="hud-vis">vis —</span>
+        <span id="hud-lastatk">LAST ATTACK: none</span>
       </div>
       <div id="status" data-state="loading">
         <p id="status-message">カメラとモデルを準備しています…</p>
